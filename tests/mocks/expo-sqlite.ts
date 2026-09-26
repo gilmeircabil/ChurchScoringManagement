@@ -1,4 +1,4 @@
-export async function openDatabaseAsync(dbName: string) {
+export async function openDatabaseAsync(_dbName: string) {
   return {
     execAsync: async () => {},
     runAsync: async () => ({ lastInsertRowId: 1, changes: 1 }),

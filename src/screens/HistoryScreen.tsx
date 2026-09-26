@@ -11,11 +11,14 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
+import { DestructiveConfirmModal } from '../components/DestructiveConfirmModal';
+import { RoundStatusBadge } from '../components/RoundStatusBadge';
+import { StatusBanner, StatusMessage } from '../components/StatusBanner';
 import { RoundDetailModal } from './RoundDetailModal';
 import { getQuizService } from '../services/quizService';
 import { RoundHistoryItem, Round, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
-import { formatDateDisplay } from '../utils/formatters';
+import { formatDateDisplay, pluralize } from '../utils/formatters';
 
 interface HistoryScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -32,6 +35,11 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedRound, setSelectedRound] = useState<Round | null>(null);
+
+  // Clear history state
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [clearing, setClearing] = useState(false);
+  const [clearMessage, setClearMessage] = useState<StatusMessage>(null);
 
   const loadHistory = useCallback(async () => {
     try {
@@ -65,13 +73,67 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
     }
   };
 
+  // Only open the confirmation when nothing is in progress
+  const handleClearHistoryPress = async () => {
+    setClearMessage(null);
+    try {
+      const service = await getQuizService();
+      const active = await service.rounds.getActiveRound();
+      if (active) {
+        setClearMessage({
+          type: 'error',
+          text: 'A round is currently in progress. Lock or finish it before clearing history.',
+        });
+        return;
+      }
+      if (historyList.length === 0) {
+        return;
+      }
+      setShowClearConfirm(true);
+    } catch (err: any) {
+      setClearMessage({ type: 'error', text: err.message || 'Unable to check the current round.' });
+    }
+  };
+
+  const handleConfirmClearHistory = async () => {
+    setClearing(true);
+    setShowClearConfirm(false);
+    try {
+      const service = await getQuizService();
+      const removed = await service.rounds.clearHistory();
+      setSelectedRound(null);
+      setClearMessage({
+        type: 'success',
+        text: `Cleared ${removed} ${removed === 1 ? 'round' : 'rounds'} and all their scores. Players were kept.`,
+      });
+      await loadHistory();
+    } catch (err: any) {
+      setClearMessage({ type: 'error', text: err.message || 'Failed to clear history.' });
+    } finally {
+      setClearing(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Header
         title="History"
-        subtitle={`${historyList.length} past ${historyList.length === 1 ? 'round' : 'rounds'}`}
+        subtitle={`${historyList.length} past ${pluralize(historyList.length, 'round')}`}
         onSettingsPress={onOpenSettings}
       />
+
+      <View style={styles.actionBar}>
+        <StatusBanner message={clearMessage} style={{ marginBottom: 12 }} />
+
+        <TouchableOpacity
+          style={styles.clearHistoryButton}
+          onPress={handleClearHistoryPress}
+          disabled={clearing || historyList.length === 0}
+        >
+          <Ionicons name="trash-outline" size={16} color={COLORS.danger} style={{ marginRight: 6 }} />
+          <Text style={styles.clearHistoryButtonText}>Clear History</Text>
+        </TouchableOpacity>
+      </View>
 
       {loading ? (
         <View style={styles.loaderContainer}>
@@ -96,9 +158,6 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
           }
           renderItem={({ item }) => {
-            const isLocked = item.status === 'LOCKED';
-            const isActive = item.status === 'ACTIVE';
-
             return (
               <TouchableOpacity
                 style={styles.roundCard}
@@ -107,25 +166,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
               >
                 <View style={styles.cardHeader}>
                   <Text style={styles.roundDate}>{formatDateDisplay(item.round_date)}</Text>
-                  <View
-                    style={[
-                      styles.statusBadge,
-                      isLocked && styles.badgeLocked,
-                      isActive && styles.badgeActive,
-                      item.status === 'DRAFT' && styles.badgeDraft,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusText,
-                        isLocked && styles.statusTextLocked,
-                        isActive && styles.statusTextActive,
-                        item.status === 'DRAFT' && styles.statusTextDraft,
-                      ]}
-                    >
-                      {item.status}
-                    </Text>
-                  </View>
+                  <RoundStatusBadge status={item.status} />
                 </View>
 
                 <View style={styles.cardDetailsRow}>
@@ -146,6 +187,17 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
           }}
         />
       )}
+
+      {/* CLEAR HISTORY CONFIRMATION MODAL */}
+      <DestructiveConfirmModal
+        visible={showClearConfirm}
+        iconName="trash-outline"
+        title="Clear History?"
+        message="This will permanently erase all rounds, groups, and score records. Players and their starting scores will be kept. This cannot be undone."
+        confirmWord="DELETE"
+        onConfirm={handleConfirmClearHistory}
+        onCancel={() => setShowClearConfirm(false)}
+      />
 
       {/* ROUND DETAIL MODAL */}
       <RoundDetailModal
@@ -177,6 +229,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingBottom: 40,
   },
+  actionBar: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  clearHistoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'flex-end',
+    backgroundColor: COLORS.dangerContainer,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  clearHistoryButtonText: {
+    color: COLORS.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   listContent: {
     padding: 16,
     gap: 12,
@@ -203,35 +276,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: COLORS.textPrimary,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  badgeLocked: {
-    backgroundColor: COLORS.surfaceVariant,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  badgeActive: {
-    backgroundColor: COLORS.successContainer,
-  },
-  badgeDraft: {
-    backgroundColor: COLORS.warningContainer,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  statusTextLocked: {
-    color: COLORS.textSecondary,
-  },
-  statusTextActive: {
-    color: COLORS.onSuccessContainer,
-  },
-  statusTextDraft: {
-    color: COLORS.onWarningContainer,
   },
   cardDetailsRow: {
     flexDirection: 'row',

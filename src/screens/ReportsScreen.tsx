@@ -11,10 +11,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
+import { PlayerIdBadge } from '../components/PlayerIdBadge';
 import { getQuizService } from '../services/quizService';
 import { ReportItem, Round, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
-import { formatPlayerIdentifier, formatDateDisplay } from '../utils/formatters';
+import { formatDateDisplay } from '../utils/formatters';
 
 interface ReportsScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -200,11 +201,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
                   <Text style={styles.playerName} numberOfLines={1}>
                     {item.player_name}
                   </Text>
-                  <View style={styles.idBadge}>
-                    <Text style={styles.idText}>
-                      {formatPlayerIdentifier(item.player_number)}
-                    </Text>
-                  </View>
+                  <PlayerIdBadge playerNumber={item.player_number} />
                 </View>
 
                 {/* Score Value */}
@@ -375,20 +372,6 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginRight: 8,
     flexShrink: 1,
-  },
-  idBadge: {
-    backgroundColor: COLORS.surfaceVariant,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  idText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    fontVariant: ['tabular-nums'],
   },
   scoreBox: {
     alignItems: 'flex-end',

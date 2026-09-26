@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
@@ -11,6 +11,7 @@ import { RoundScreen } from './src/screens/RoundScreen';
 import { ReportsScreen } from './src/screens/ReportsScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
+import { PinLockScreen } from './src/screens/PinLockScreen';
 import { MainTab } from './src/types';
 import { COLORS } from './src/constants/colors';
 import { APP_CONFIG } from './src/constants/config';
@@ -22,6 +23,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasActiveRound, setHasActiveRound] = useState(false);
   const [targetRoundId, setTargetRoundId] = useState<string | undefined>(undefined);
+  const [isUnlocked, setIsUnlocked] = useState(false);
 
   const initApp = useCallback(async () => {
     try {
@@ -92,53 +94,59 @@ export default function App() {
         <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
           <StatusBar style="dark" />
 
-          <View style={styles.mainContent}>
-            {isSettingsOpen ? (
-              <SettingsScreen onBack={() => setIsSettingsOpen(false)} />
-            ) : (
-              <>
-                {activeTab === 'home' && (
-                  <HomeScreen
-                    onNavigate={handleTabChange}
-                    onOpenSettings={() => setIsSettingsOpen(true)}
-                  />
+          {!isUnlocked ? (
+            <PinLockScreen onUnlock={() => setIsUnlocked(true)} />
+          ) : (
+            <>
+              <View style={styles.mainContent}>
+                {isSettingsOpen ? (
+                  <SettingsScreen onBack={() => setIsSettingsOpen(false)} />
+                ) : (
+                  <>
+                    {activeTab === 'home' && (
+                      <HomeScreen
+                        onNavigate={handleTabChange}
+                        onOpenSettings={() => setIsSettingsOpen(true)}
+                      />
+                    )}
+                    {activeTab === 'players' && (
+                      <PlayersScreen
+                        onNavigate={handleTabChange}
+                        onOpenSettings={() => setIsSettingsOpen(true)}
+                      />
+                    )}
+                    {activeTab === 'round' && (
+                      <RoundScreen
+                        onNavigate={handleTabChange}
+                        onOpenSettings={() => setIsSettingsOpen(true)}
+                        targetRoundId={targetRoundId}
+                      />
+                    )}
+                    {activeTab === 'reports' && (
+                      <ReportsScreen
+                        onNavigate={handleTabChange}
+                        onOpenSettings={() => setIsSettingsOpen(true)}
+                      />
+                    )}
+                    {activeTab === 'history' && (
+                      <HistoryScreen
+                        onNavigate={handleTabChange}
+                        onOpenSettings={() => setIsSettingsOpen(true)}
+                        onSelectRoundForScreen={handleOpenRoundWithId}
+                      />
+                    )}
+                  </>
                 )}
-                {activeTab === 'players' && (
-                  <PlayersScreen
-                    onNavigate={handleTabChange}
-                    onOpenSettings={() => setIsSettingsOpen(true)}
-                  />
-                )}
-                {activeTab === 'round' && (
-                  <RoundScreen
-                    onNavigate={handleTabChange}
-                    onOpenSettings={() => setIsSettingsOpen(true)}
-                    targetRoundId={targetRoundId}
-                  />
-                )}
-                {activeTab === 'reports' && (
-                  <ReportsScreen
-                    onNavigate={handleTabChange}
-                    onOpenSettings={() => setIsSettingsOpen(true)}
-                  />
-                )}
-                {activeTab === 'history' && (
-                  <HistoryScreen
-                    onNavigate={handleTabChange}
-                    onOpenSettings={() => setIsSettingsOpen(true)}
-                    onSelectRoundForScreen={handleOpenRoundWithId}
-                  />
-                )}
-              </>
-            )}
-          </View>
+              </View>
 
-          {!isSettingsOpen && (
-            <TabBar
-              activeTab={activeTab}
-              onTabChange={handleTabChange}
-              hasActiveRound={hasActiveRound}
-            />
+              {!isSettingsOpen && (
+                <TabBar
+                  activeTab={activeTab}
+                  onTabChange={handleTabChange}
+                  hasActiveRound={hasActiveRound}
+                />
+              )}
+            </>
           )}
         </SafeAreaView>
       </View>

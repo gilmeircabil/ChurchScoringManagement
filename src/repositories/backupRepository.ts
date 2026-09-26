@@ -143,10 +143,11 @@ export class BackupRepository {
       // Insert players
       for (const p of data.players) {
         await this.db.runAsync(
-          'INSERT INTO players (id, player_number, name, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+          'INSERT INTO players (id, player_number, name, initial_score, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
           p.id,
           p.player_number || 1,
           p.name,
+          p.initial_score ?? 0,
           p.active ?? 1,
           p.created_at,
           p.updated_at
@@ -204,16 +205,15 @@ export class BackupRepository {
   }
 
   /**
-   * Parses JSON string, validates, and restores data.
+   * Deletes all application data.
    */
-  async restoreFromJsonString(jsonString: string): Promise<void> {
-    let parsed: any;
-    try {
-      parsed = JSON.parse(jsonString);
-    } catch {
-      throw new Error('Backup file is invalid or corrupted (invalid JSON syntax).');
-    }
-
-    await this.restoreFromData(parsed);
+  async deleteAllData(): Promise<void> {
+    await this.db.withTransactionAsync(async () => {
+      await this.db.runAsync('DELETE FROM scores');
+      await this.db.runAsync('DELETE FROM group_members');
+      await this.db.runAsync('DELETE FROM groups');
+      await this.db.runAsync('DELETE FROM rounds');
+      await this.db.runAsync('DELETE FROM players');
+    });
   }
 }

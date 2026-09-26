@@ -24,7 +24,7 @@ export class ReportRepository {
         p.id AS player_id,
         p.name AS player_name,
         p.player_number,
-        COALESCE(SUM(s.points), 0) AS total_score,
+        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points), 0)) AS total_score,
         COUNT(s.id) AS rounds_count
        FROM players p
        LEFT JOIN scores s ON s.player_id = p.id
@@ -67,41 +67,6 @@ export class ReportRepository {
        WHERE gm.round_id = ?
        ORDER BY round_score DESC, p.name COLLATE NOCASE ASC, p.player_number ASC`,
       roundId
-    );
-
-    const mapped = rows.map((r) => ({
-      rank: 0,
-      player_id: r.player_id,
-      player_name: r.player_name,
-      player_number: r.player_number,
-      score: r.round_score,
-    }));
-
-    return assignCompetitionRanks(mapped);
-  }
-
-  /**
-   * Scores for a specific group within a round, ranked from highest to lowest.
-   */
-  async getGroupReport(roundId: string, groupId: string): Promise<ReportItem[]> {
-    const rows = await this.db.getAllAsync<{
-      player_id: string;
-      player_name: string;
-      player_number: number;
-      round_score: number;
-    }>(
-      `SELECT
-        p.id AS player_id,
-        p.name AS player_name,
-        p.player_number,
-        COALESCE(s.points, 0) AS round_score
-       FROM group_members gm
-       JOIN players p ON gm.player_id = p.id
-       LEFT JOIN scores s ON s.round_id = gm.round_id AND s.player_id = p.id
-       WHERE gm.round_id = ? AND gm.group_id = ?
-       ORDER BY round_score DESC, p.name COLLATE NOCASE ASC, p.player_number ASC`,
-      roundId,
-      groupId
     );
 
     const mapped = rows.map((r) => ({

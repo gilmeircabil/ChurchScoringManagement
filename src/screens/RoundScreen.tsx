@@ -19,11 +19,14 @@ import { ScoreModal } from '../components/ScoreModal';
 import { AssignGroupModal } from '../components/AssignGroupModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { UnassignedListModal } from '../components/UnassignedListModal';
+import { RoundStatusBadge } from '../components/RoundStatusBadge';
+import { PlayerIdBadge } from '../components/PlayerIdBadge';
+import { PendingScorePlaceholder } from '../components/PendingScorePlaceholder';
 import { getQuizService } from '../services/quizService';
 import { Round, Group, GroupDetail, AssignedMember, Player, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 import { APP_CONFIG } from '../constants/config';
-import { formatDateDisplay, formatPlayerIdentifier, getTodayISODate } from '../utils/formatters';
+import { formatDateDisplay, getTodayISODate, pluralize } from '../utils/formatters';
 import { validateGroupCount } from '../utils/validation';
 
 interface RoundScreenProps {
@@ -33,7 +36,7 @@ interface RoundScreenProps {
 }
 
 export const RoundScreen: React.FC<RoundScreenProps> = ({
-  onNavigate,
+  onNavigate: _onNavigate,
   onOpenSettings,
   targetRoundId,
 }) => {
@@ -192,7 +195,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       setIsNewRoundModalVisible(false);
       setNewRoundError(null);
       loadRoundData(newRound.id);
-    } catch (err) {
+    } catch (_err) {
       setNewRoundError('Failed to create round.');
     }
   };
@@ -214,7 +217,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       const service = await getQuizService();
       await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
       loadRoundData(round.id);
-    } catch (err) {
+    } catch (_err) {
       Alert.alert('Error', 'Unable to start round.');
     }
   };
@@ -227,7 +230,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       await service.rounds.updateRoundStatus(round.id, 'LOCKED');
       setIsLockConfirmVisible(false);
       loadRoundData(round.id);
-    } catch (err) {
+    } catch (_err) {
       Alert.alert('Error', 'Unable to lock round.');
     }
   };
@@ -240,7 +243,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
       setIsUnlockConfirmVisible(false);
       loadRoundData(round.id);
-    } catch (err) {
+    } catch (_err) {
       Alert.alert('Error', 'Unable to unlock round.');
     }
   };
@@ -248,6 +251,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
   // Save Score
   const handleSaveScore = async (points: number) => {
     if (!round || !scoringMember) return;
+    if (round.status !== 'ACTIVE') return;
     try {
       const service = await getQuizService();
       await service.scores.saveScore(round.id, scoringMember.player_id, points);
@@ -255,6 +259,33 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       loadRoundData(round.id);
     } catch (err: any) {
       Alert.alert('Error', err.message || 'Unable to save score.');
+    }
+  };
+
+  // Quick Stepper for round score (+5, -5)
+  const handleQuickStepScore = async (member: AssignedMember, delta: number) => {
+    if (!round || round.status !== 'ACTIVE') return;
+    const currentScore = member.round_score || 0;
+    const newScore = Math.max(0, currentScore + delta);
+    if (newScore === currentScore && delta < 0) return;
+
+    // Optimistically update groupDetails state for instant UI feedback
+    setGroupDetails((prev) =>
+      prev.map((g) => ({
+        ...g,
+        members: g.members.map((m) =>
+          m.player_id === member.player_id ? { ...m, round_score: newScore } : m
+        ),
+      }))
+    );
+
+    try {
+      const service = await getQuizService();
+      await service.scores.saveScore(round.id, member.player_id, newScore);
+      loadRoundData(round.id);
+    } catch (err: any) {
+      loadRoundData(round.id);
+      Alert.alert('Error', err.message || 'Unable to update score.');
     }
   };
 
@@ -322,7 +353,10 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
 
             <Text style={styles.fieldLabel}>Number of Groups</Text>
             <View style={styles.groupCountRow}>
-              {[2, 3, 4, 5, 6].map((num) => (
+              {Array.from(
+                { length: 5 },
+                (_, i) => APP_CONFIG.minGroupCount + i
+              ).map((num) => (
                 <TouchableOpacity
                   key={num}
                   style={[
@@ -386,25 +420,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       <ScrollView style={styles.scrollArea} contentContainerStyle={styles.scrollContent}>
         {/* TOP STATUS BAR & ACTIONS */}
         <View style={styles.statusBarRow}>
-          <View
-            style={[
-              styles.statusBadge,
-              isDraft && styles.badgeDraft,
-              isActive && styles.badgeActive,
-              isLocked && styles.badgeLocked,
-            ]}
-          >
-            <Text
-              style={[
-                styles.statusText,
-                isDraft && styles.statusTextDraft,
-                isActive && styles.statusTextActive,
-                isLocked && styles.statusTextLocked,
-              ]}
-            >
-              {round.status}
-            </Text>
-          </View>
+          <RoundStatusBadge status={round.status} />
 
           <View style={styles.topActionsRight}>
             <TouchableOpacity
@@ -478,9 +494,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
                     onPress={() => handlePlayerTap(p)}
                   >
                     <Text style={styles.searchResultName}>{p.name}</Text>
-                    <View style={styles.idBadge}>
-                      <Text style={styles.idText}>{formatPlayerIdentifier(p.player_number)}</Text>
-                    </View>
+                    <PlayerIdBadge playerNumber={p.player_number} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -498,7 +512,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
                 </View>
                 <Text style={styles.groupHeaderTitle}>GROUP {group.group_number}</Text>
                 <Text style={styles.groupMemberCount}>
-                  {group.members.length} {group.members.length === 1 ? 'player' : 'players'}
+                  {group.members.length} {pluralize(group.members.length, 'player')}
                 </Text>
               </View>
 
@@ -527,35 +541,63 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
                         <Text style={styles.memberName} numberOfLines={1}>
                           {member.player_name}
                         </Text>
-                        <View style={styles.idBadge}>
-                          <Text style={styles.idText}>
-                            {formatPlayerIdentifier(member.player_number)}
-                          </Text>
-                        </View>
+                        <PlayerIdBadge playerNumber={member.player_number} />
                       </TouchableOpacity>
 
-                      {/* SCORING CONTROLS */}
-                      {isActive && (
+                      {/* SCORING CONTROLS — ONLY WHILE THE ROUND IS ACTIVE */}
+                      {isActive ? (
                         <View style={styles.scoreActionRow}>
-                          <Text style={styles.roundScoreText}>
-                            Score: <Text style={styles.scoreBold}>{member.round_score}</Text>
-                          </Text>
+                          <TouchableOpacity
+                            style={styles.stepperButton}
+                            onPress={() => handleQuickStepScore(member, -5)}
+                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                            accessibilityLabel="Subtract 5 points"
+                          >
+                            <Ionicons name="remove" size={14} color={COLORS.textSecondary} />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.scorePill}
+                            onPress={() => setScoringMember(member)}
+                            activeOpacity={0.7}
+                            accessibilityLabel={`Score: ${member.round_score} points. Tap to edit`}
+                          >
+                            <Text style={styles.scorePillValue}>{member.round_score}</Text>
+                            <Text style={styles.scorePillLabel}>pts</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.stepperButton}
+                            onPress={() => handleQuickStepScore(member, 5)}
+                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                            accessibilityLabel="Add 5 points"
+                          >
+                            <Ionicons name="add" size={14} color={COLORS.primary} />
+                          </TouchableOpacity>
+
                           <TouchableOpacity
                             style={styles.scoreButton}
                             onPress={() => setScoringMember(member)}
+                            accessibilityLabel="Edit score"
                           >
+                            <Ionicons name="pencil" size={11} color={COLORS.onPrimaryContainer} style={{ marginRight: 3 }} />
                             <Text style={styles.scoreButtonText}>
-                              {member.round_score > 0 ? 'Edit Score' : 'Enter Score'}
+                              {member.round_score > 0 ? 'Edit' : 'Score'}
                             </Text>
                           </TouchableOpacity>
                         </View>
-                      )}
-
-                      {/* LOCKED SCORE VIEW */}
-                      {isLocked && (
-                        <View style={styles.lockedScoreBadge}>
+                      ) : isLocked ? (
+                        <TouchableOpacity
+                          style={styles.lockedScoreBadge}
+                          onPress={() => setIsUnlockConfirmVisible(true)}
+                          activeOpacity={0.7}
+                          accessibilityLabel="Score locked. Tap to unlock round"
+                        >
+                          <Ionicons name="lock-closed" size={11} color={COLORS.onSecondaryContainer} style={{ marginRight: 4 }} />
                           <Text style={styles.lockedScoreText}>+{member.round_score}</Text>
-                        </View>
+                        </TouchableOpacity>
+                      ) : (
+                        <PendingScorePlaceholder />
                       )}
                     </View>
                   ))}
@@ -708,36 +750,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 12,
   },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  badgeDraft: {
-    backgroundColor: COLORS.warningContainer,
-  },
-  badgeActive: {
-    backgroundColor: COLORS.successContainer,
-  },
-  badgeLocked: {
-    backgroundColor: COLORS.surfaceVariant,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  statusTextDraft: {
-    color: COLORS.onWarningContainer,
-  },
-  statusTextActive: {
-    color: COLORS.onSuccessContainer,
-  },
-  statusTextLocked: {
-    color: COLORS.textSecondary,
-  },
   topActionsRight: {
     flexDirection: 'row',
     gap: 8,
@@ -844,20 +856,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textPrimary,
   },
-  idBadge: {
-    backgroundColor: COLORS.surfaceVariant,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  idText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
   groupsContainer: {
     gap: 14,
   },
@@ -945,36 +943,64 @@ const styles = StyleSheet.create({
   scoreActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 4,
   },
-  roundScoreText: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+  stepperButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.surfaceVariant,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  scoreBold: {
+  scorePill: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    backgroundColor: COLORS.surfaceVariant,
+    borderWidth: 1.5,
+    borderColor: COLORS.borderDark,
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    minWidth: 44,
+    justifyContent: 'center',
+  },
+  scorePillValue: {
+    fontSize: 14,
     fontWeight: '700',
     color: COLORS.primary,
-    fontSize: 15,
+  },
+  scorePillLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+    marginLeft: 2,
   },
   scoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.primaryContainer,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
+    borderRadius: 7,
   },
   scoreButtonText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: COLORS.onPrimaryContainer,
   },
   lockedScoreBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.secondaryContainer,
-    paddingHorizontal: 10,
+    paddingHorizontal: 9,
     paddingVertical: 4,
-    borderRadius: 12,
+    borderRadius: 10,
   },
   lockedScoreText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
     color: COLORS.onSecondaryContainer,
   },

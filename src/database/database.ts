@@ -56,10 +56,3 @@ export async function getDatabaseConnection(): Promise<IDatabaseConnection> {
   databaseInstance = conn;
   return databaseInstance;
 }
-
-/**
- * Allows setting a custom database connection (used for testing or switching DBs).
- */
-export function setDatabaseConnection(conn: IDatabaseConnection | null): void {
-  databaseInstance = conn;
-}

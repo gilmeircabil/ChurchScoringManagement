@@ -68,12 +68,6 @@ export class RoundRepository {
     return null;
   }
 
-  async getLatestRound(): Promise<Round | null> {
-    return await this.db.getFirstAsync<Round>(
-      'SELECT * FROM rounds ORDER BY round_date DESC, created_at DESC LIMIT 1'
-    );
-  }
-
   async getAllRounds(): Promise<Round[]> {
     return await this.db.getAllAsync<Round>(
       'SELECT * FROM rounds ORDER BY round_date DESC, created_at DESC'
@@ -104,12 +98,41 @@ export class RoundRepository {
     );
   }
 
-  async deleteRound(id: string): Promise<void> {
-    await this.db.withTransactionAsync(async () => {
-      await this.db.runAsync('DELETE FROM scores WHERE round_id = ?', id);
-      await this.db.runAsync('DELETE FROM group_members WHERE round_id = ?', id);
-      await this.db.runAsync('DELETE FROM groups WHERE round_id = ?', id);
-      await this.db.runAsync('DELETE FROM rounds WHERE id = ?', id);
+  /**
+   * Returns the first round still in progress, if any.
+   */
+  async getActiveRound(): Promise<Round | null> {
+    return await this.db.getFirstAsync<Round>(
+      "SELECT * FROM rounds WHERE status = 'ACTIVE' ORDER BY round_date DESC, created_at DESC LIMIT 1"
+    );
+  }
+
+  /**
+   * Erases every round along with its groups, group assignments and scores.
+   * Players and their initial scores are preserved.
+   * Refuses to run while a round is still ACTIVE.
+   */
+  async clearHistory(): Promise<number> {
+    return await this.db.withTransactionAsync(async () => {
+      const active = await this.db.getFirstAsync<{ id: string }>(
+        "SELECT id FROM rounds WHERE status = 'ACTIVE' LIMIT 1"
+      );
+      if (active) {
+        throw new Error(
+          'A round is currently in progress. Lock or finish it before clearing history.'
+        );
+      }
+
+      const total = await this.db.getFirstAsync<{ count: number }>(
+        'SELECT COUNT(*) AS count FROM rounds'
+      );
+
+      await this.db.runAsync('DELETE FROM scores');
+      await this.db.runAsync('DELETE FROM group_members');
+      await this.db.runAsync('DELETE FROM groups');
+      await this.db.runAsync('DELETE FROM rounds');
+
+      return total?.count ?? 0;
     });
   }
 }

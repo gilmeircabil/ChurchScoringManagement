@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS players (
     id TEXT PRIMARY KEY,
     player_number INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
+    initial_score INTEGER NOT NULL DEFAULT 0,
     active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -78,5 +79,12 @@ export async function initializeDatabase(db: IDatabaseConnection): Promise<void>
   } else if (currentVersion < APP_CONFIG.databaseVersion) {
     // Future migration steps can be added here
     await db.execAsync(`PRAGMA user_version = ${APP_CONFIG.databaseVersion};`);
+  }
+
+  // Ensure initial_score column exists for upgraded databases
+  try {
+    await db.execAsync('ALTER TABLE players ADD COLUMN initial_score INTEGER NOT NULL DEFAULT 0;');
+  } catch {
+    // Column already exists
   }
 }

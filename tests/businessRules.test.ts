@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach } from '@jest/globals';
 import { SqlJsTestConnection } from './testDbAdapter';
 import { QuizService, createQuizServiceWithDb } from '../src/services/quizService';
-import { formatPlayerWithId, formatPlayerIdentifier, assignCompetitionRanks } from '../src/utils/formatters';
+import { formatPlayerIdentifier } from '../src/utils/formatters';
 import { validatePlayerName, validateScore, validateGroupCount } from '../src/utils/validation';
 
 describe('Quiz Score Manager — Business Rules and Scenarios', () => {
@@ -39,8 +39,8 @@ describe('Quiz Score Manager — Business Rules and Scenarios', () => {
     expect(john2.name).toBe('John');
     expect(john2.player_number).toBe(2);
 
-    expect(formatPlayerWithId(john1.name, john1.player_number)).toBe('John — #001');
-    expect(formatPlayerWithId(john2.name, john2.player_number)).toBe('John — #002');
+    expect(formatPlayerIdentifier(john1.player_number)).toBe('#001');
+    expect(formatPlayerIdentifier(john2.player_number)).toBe('#002');
 
     const all = await service.players.getAllPlayers();
     expect(all).toHaveLength(2);
@@ -341,5 +341,154 @@ describe('Quiz Score Manager — Business Rules and Scenarios', () => {
     expect(validateGroupCount(1).isValid).toBe(false);
     expect(validateGroupCount(4).isValid).toBe(true);
     expect(validateGroupCount(2).isValid).toBe(true);
+  });
+
+  // TEST 14 — searchPlayersWithStats returns cumulative score and rounds played
+  test('Test 14 — searchPlayersWithStats returns cumulative score and rounds played for each player', async () => {
+    const john = await service.players.createPlayer('John');
+    const sarah = await service.players.createPlayer('Sarah');
+
+    // Initially 0 scores
+    let playersWithStats = await service.players.searchPlayersWithStats('');
+    expect(playersWithStats).toHaveLength(2);
+    expect(playersWithStats.find((p) => p.id === john.id)?.total_score).toBe(0);
+    expect(playersWithStats.find((p) => p.id === john.id)?.rounds_played).toBe(0);
+
+    // Create round, start it, then score John 30, Sarah 40
+    const round = await service.rounds.createRound('2026-09-26', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+    await service.scores.saveScore(round.id, john.id, 30);
+    await service.scores.saveScore(round.id, sarah.id, 40);
+
+    playersWithStats = await service.players.searchPlayersWithStats('');
+    expect(playersWithStats.find((p) => p.id === john.id)?.total_score).toBe(30);
+    expect(playersWithStats.find((p) => p.id === john.id)?.rounds_played).toBe(1);
+    expect(playersWithStats.find((p) => p.id === sarah.id)?.total_score).toBe(40);
+    expect(playersWithStats.find((p) => p.id === sarah.id)?.rounds_played).toBe(1);
+  });
+
+  // TEST 15 — Scores are blocked in DRAFT, editable once ACTIVE, with quick stepper increments/decrements
+  test('Test 15 — Scores blocked in DRAFT, editable once ACTIVE, quick stepper increments/decrements', async () => {
+    const john = await service.players.createPlayer('John');
+    const round = await service.rounds.createRound('2026-09-26', 2);
+    expect(round.status).toBe('DRAFT');
+
+    // Scoring is not allowed before the round starts
+    await expect(service.scores.saveScore(round.id, john.id, 10)).rejects.toThrow(
+      /has not started/i
+    );
+    expect(await service.scores.getPlayerTotalScore(john.id)).toBe(0);
+
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    // Score can be saved once the round is started
+    await service.scores.saveScore(round.id, john.id, 10);
+    expect(await service.scores.getPlayerTotalScore(john.id)).toBe(10);
+
+    // Quick step +5 -> 15
+    await service.scores.saveScore(round.id, john.id, 15);
+    expect(await service.scores.getPlayerTotalScore(john.id)).toBe(15);
+
+    // Quick step -5 -> 10
+    await service.scores.saveScore(round.id, john.id, 10);
+    expect(await service.scores.getPlayerTotalScore(john.id)).toBe(10);
+
+    // Score cannot be negative
+    const nonNegative = Math.max(0, 10 - 20);
+    await service.scores.saveScore(round.id, john.id, nonNegative);
+    expect(await service.scores.getPlayerTotalScore(john.id)).toBe(0);
+
+    // Locking the round blocks scoring again
+    await service.rounds.updateRoundStatus(round.id, 'LOCKED');
+    await expect(service.scores.saveScore(round.id, john.id, 25)).rejects.toThrow(/locked/i);
+    expect(await service.scores.getPlayerTotalScore(john.id)).toBe(0);
+  });
+
+  // TEST 16 — Adding player with default score and cumulative calculation
+  test('Test 16 — Adding player with default score and cumulative calculation', async () => {
+    // Add player with default score = 25
+    const david = await service.players.createPlayer('David', 25);
+    expect(david.initial_score).toBe(25);
+
+    // Initial total score is 25 even with 0 rounds played
+    let stats = await service.players.getPlayerWithStats(david.id);
+    expect(stats?.initial_score).toBe(25);
+    expect(stats?.total_score).toBe(25);
+    expect(stats?.rounds_played).toBe(0);
+    expect(await service.scores.getPlayerTotalScore(david.id)).toBe(25);
+
+    // Plays round 1, earns 15 points
+    const round = await service.rounds.createRound('2026-09-26', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+    await service.scores.saveScore(round.id, david.id, 15);
+
+    // Total score becomes 25 + 15 = 40
+    expect(await service.scores.getPlayerTotalScore(david.id)).toBe(40);
+    stats = await service.players.getPlayerWithStats(david.id);
+    expect(stats?.total_score).toBe(40);
+    expect(stats?.rounds_played).toBe(1);
+
+    // Update player default score to 30
+    await service.players.updatePlayer(david.id, 'David', 30);
+    expect(await service.scores.getPlayerTotalScore(david.id)).toBe(45);
+    stats = await service.players.getPlayerWithStats(david.id);
+    expect(stats?.initial_score).toBe(30);
+    expect(stats?.total_score).toBe(45);
+
+    // Check overall report
+    const overall = await service.reports.getOverallReport();
+    const davidReport = overall.find((r) => r.player_id === david.id);
+    expect(davidReport?.score).toBe(45);
+  });
+
+  // TEST 17 — Clear history wipes rounds and scores but keeps players
+  test('Test 17 — Clear history erases rounds and scores but preserves players', async () => {
+    const john = await service.players.createPlayer('John', 20);
+    const sara = await service.players.createPlayer('Sara', 15);
+
+    // Two finished rounds with groups and scores
+    const roundA = await service.rounds.createRound('2026-09-19', 2);
+    const groupsA = await service.groups.getGroupsByRoundId(roundA.id);
+    await service.rounds.updateRoundStatus(roundA.id, 'ACTIVE');
+    await service.groups.assignPlayerToGroup(roundA.id, groupsA[0].id, john.id);
+    await service.groups.assignPlayerToGroup(roundA.id, groupsA[1].id, sara.id);
+    await service.scores.saveScore(roundA.id, john.id, 30);
+    await service.scores.saveScore(roundA.id, sara.id, 25);
+    await service.rounds.updateRoundStatus(roundA.id, 'LOCKED');
+
+    const roundB = await service.rounds.createRound('2026-09-26', 2);
+    await service.rounds.updateRoundStatus(roundB.id, 'ACTIVE');
+    await service.scores.saveScore(roundB.id, john.id, 10);
+    await service.rounds.updateRoundStatus(roundB.id, 'LOCKED');
+
+    expect(await service.rounds.getRoundHistoryList()).toHaveLength(2);
+
+    // Blocked while a round is in progress
+    const roundC = await service.rounds.createRound('2026-10-03', 2);
+    await service.rounds.updateRoundStatus(roundC.id, 'ACTIVE');
+    await expect(service.rounds.clearHistory()).rejects.toThrow(/in progress/i);
+    expect(await service.rounds.getRoundHistoryList()).toHaveLength(3);
+
+    // Allowed once nothing is ACTIVE
+    await service.rounds.updateRoundStatus(roundC.id, 'LOCKED');
+    const removed = await service.rounds.clearHistory();
+    expect(removed).toBe(3);
+
+    // Rounds, groups, assignments and scores are gone
+    expect(await service.rounds.getRoundHistoryList()).toHaveLength(0);
+    expect(await service.groups.getGroupsByRoundId(roundA.id)).toHaveLength(0);
+    expect(await service.groups.getAssignedMembers(roundA.id)).toHaveLength(0);
+    expect(await service.scores.getScore(roundA.id, john.id)).toBeNull();
+    expect(await service.rounds.getCurrentWorkingRound()).toBeNull();
+
+    // Players survive, and their score history is reset to starting scores
+    const players = await service.players.getAllPlayers();
+    expect(players).toHaveLength(2);
+    expect(await service.scores.getPlayerTotalScore(john.id)).toBe(20);
+    expect(await service.scores.getPlayerTotalScore(sara.id)).toBe(15);
+    expect(await service.players.getPlayerWithStats(john.id)).toMatchObject({
+      total_score: 20,
+      rounds_played: 0,
+    });
   });
 });

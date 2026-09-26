@@ -3,7 +3,7 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { Group } from '../types';
 import { COLORS } from '../constants/colors';
-import { formatPlayerIdentifier } from '../utils/formatters';
+import { PlayerIdBadge } from './PlayerIdBadge';
 
 interface AssignGroupModalProps {
   visible: boolean;
@@ -68,9 +68,7 @@ export const AssignGroupModal: React.FC<AssignGroupModalProps> = ({
             <Text style={styles.playerName} numberOfLines={1}>
               {playerName}
             </Text>
-            <View style={styles.idBadge}>
-              <Text style={styles.idText}>{formatPlayerIdentifier(playerNumber)}</Text>
-            </View>
+            <PlayerIdBadge playerNumber={playerNumber} />
           </View>
 
           {/* Mode 1: Already Assigned Actions */}
@@ -226,19 +224,6 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginRight: 8,
     flexShrink: 1,
-  },
-  idBadge: {
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  idText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
   },
   contentSection: {
     width: '100%',

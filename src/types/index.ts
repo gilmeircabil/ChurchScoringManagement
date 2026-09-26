@@ -4,6 +4,7 @@ export interface Player {
   id: string;
   player_number: number;
   name: string;
+  initial_score?: number;
   active: number;
   created_at: string;
   updated_at: string;
@@ -45,6 +46,7 @@ export interface Score {
 export interface PlayerWithStats extends Player {
   total_score: number;
   rounds_played: number;
+  initial_score: number;
 }
 
 export interface PlayerScoreHistoryItem {
@@ -71,14 +73,6 @@ export interface GroupDetail {
   id: string;
   group_number: number;
   members: AssignedMember[];
-}
-
-export interface RoundDetail {
-  round: Round;
-  groups: GroupDetail[];
-  totalAssigned: number;
-  totalUnassigned: number;
-  totalPlayers: number;
 }
 
 export interface ReportItem {

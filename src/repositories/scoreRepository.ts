@@ -20,18 +20,25 @@ export class ScoreRepository {
   /**
    * Sets or updates a player's score for a specific round.
    * Replaces the score for that round rather than adding on top.
+   * Scores can only be recorded once the round is ACTIVE.
    */
   async saveScore(roundId: string, playerId: string, points: number): Promise<void> {
     const now = new Date().toISOString();
 
     await this.db.withTransactionAsync(async () => {
-      // Check if round is locked
       const round = await this.db.getFirstAsync<{ status: string }>(
         'SELECT status FROM rounds WHERE id = ?',
         roundId
       );
-      if (round?.status === 'LOCKED') {
+
+      if (!round) {
+        throw new Error('Round not found.');
+      }
+      if (round.status === 'LOCKED') {
         throw new Error('This round is locked. Unlock the round before making changes.');
+      }
+      if (round.status !== 'ACTIVE') {
+        throw new Error('This round has not started. Start the round before recording scores.');
       }
 
       const existing = await this.db.getFirstAsync<Score>(
@@ -68,7 +75,11 @@ export class ScoreRepository {
    */
   async getPlayerTotalScore(playerId: string): Promise<number> {
     const row = await this.db.getFirstAsync<{ total: number | null }>(
-      'SELECT COALESCE(SUM(points), 0) AS total FROM scores WHERE player_id = ?',
+      `SELECT (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points), 0)) AS total
+       FROM players p
+       LEFT JOIN scores s ON s.player_id = p.id
+       WHERE p.id = ?
+       GROUP BY p.id`,
       playerId
     );
     return row?.total ?? 0;
@@ -78,18 +89,24 @@ export class ScoreRepository {
    * Gets current overall leader (highest cumulative score).
    */
   async getCurrentLeader(): Promise<PlayerWithStats | null> {
-    const row = await this.db.getFirstAsync<PlayerWithStats>(
+    const row = await this.db.getFirstAsync<any>(
       `SELECT
         p.*,
-        COALESCE(SUM(s.points), 0) AS total_score,
+        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points), 0)) AS total_score,
         COUNT(s.id) AS rounds_played
        FROM players p
-       JOIN scores s ON s.player_id = p.id
+       LEFT JOIN scores s ON s.player_id = p.id
        WHERE p.active = 1
        GROUP BY p.id
        ORDER BY total_score DESC, p.created_at ASC
        LIMIT 1`
     );
-    return row ?? null;
+    if (!row) return null;
+    return {
+      ...row,
+      initial_score: row.initial_score ?? 0,
+      total_score: row.total_score ?? 0,
+      rounds_played: row.rounds_played ?? 0,
+    };
   }
 }

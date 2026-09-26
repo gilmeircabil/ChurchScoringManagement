@@ -11,11 +11,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
+import { RoundStatusBadge } from '../components/RoundStatusBadge';
+import { PlayerIdBadge } from '../components/PlayerIdBadge';
 import { getQuizService } from '../services/quizService';
 import { Round, PlayerWithStats, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 import { APP_CONFIG } from '../constants/config';
-import { formatDateDisplay, formatPlayerIdentifier } from '../utils/formatters';
+import { formatDateDisplay, pluralize } from '../utils/formatters';
 
 interface HomeScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -96,27 +98,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, onOpenSettin
         {/* CURRENT ROUND SECTION */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>CURRENT ROUND</Text>
-          {workingRound && (
-            <View
-              style={[
-                styles.statusBadge,
-                workingRound.status === 'ACTIVE'
-                  ? styles.badgeActive
-                  : styles.badgeDraft,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.statusText,
-                  workingRound.status === 'ACTIVE'
-                    ? styles.statusTextActive
-                    : styles.statusTextDraft,
-                ]}
-              >
-                {workingRound.status}
-              </Text>
-            </View>
-          )}
+          {workingRound && <RoundStatusBadge status={workingRound.status} />}
         </View>
 
         {workingRound ? (
@@ -210,14 +192,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, onOpenSettin
                 <Text style={styles.leaderName} numberOfLines={1}>
                   {leader.name}
                 </Text>
-                <View style={styles.idBadge}>
-                  <Text style={styles.idText}>
-                    {formatPlayerIdentifier(leader.player_number)}
-                  </Text>
-                </View>
+                <PlayerIdBadge playerNumber={leader.player_number} />
               </View>
               <Text style={styles.leaderRounds}>
-                {leader.rounds_played} {leader.rounds_played === 1 ? 'round' : 'rounds'} played
+                {leader.rounds_played} {pluralize(leader.rounds_played, 'round')} played
               </Text>
             </View>
 
@@ -277,28 +255,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textSecondary,
     letterSpacing: 0.8,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  badgeActive: {
-    backgroundColor: COLORS.successContainer,
-  },
-  badgeDraft: {
-    backgroundColor: COLORS.warningContainer,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-  },
-  statusTextActive: {
-    color: COLORS.onSuccessContainer,
-  },
-  statusTextDraft: {
-    color: COLORS.onWarningContainer,
   },
   card: {
     backgroundColor: COLORS.surface,
@@ -423,19 +379,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.textPrimary,
     flexShrink: 1,
-  },
-  idBadge: {
-    backgroundColor: COLORS.surfaceVariant,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  idText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
   },
   leaderRounds: {
     fontSize: 13,

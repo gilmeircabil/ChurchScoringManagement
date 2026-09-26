@@ -39,6 +39,35 @@ export class PlayerRepository {
     return await this.db.getAllAsync<Player>(sql, pattern);
   }
 
+  async searchPlayersWithStats(query: string, activeOnly = true): Promise<PlayerWithStats[]> {
+    const trimmed = query.trim().toLowerCase();
+    const params: any[] = [];
+    let sql = `
+      SELECT
+        p.*,
+        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points), 0)) AS total_score,
+        COUNT(DISTINCT s.id) AS rounds_played
+      FROM players p
+      LEFT JOIN scores s ON s.player_id = p.id
+      WHERE 1=1
+    `;
+    if (activeOnly) {
+      sql += ' AND p.active = 1';
+    }
+    if (trimmed) {
+      sql += ' AND LOWER(p.name) LIKE ?';
+      params.push(`%${trimmed}%`);
+    }
+    sql += ' GROUP BY p.id ORDER BY p.name COLLATE NOCASE ASC, p.player_number ASC';
+    const rows = await this.db.getAllAsync<any>(sql, ...params);
+    return rows.map((r) => ({
+      ...r,
+      initial_score: r.initial_score ?? 0,
+      total_score: r.total_score ?? 0,
+      rounds_played: r.rounds_played ?? 0,
+    }));
+  }
+
   async findDuplicateNames(name: string, excludeId?: string): Promise<Player[]> {
     const trimmed = name.trim().toLowerCase();
     if (excludeId) {
@@ -54,17 +83,19 @@ export class PlayerRepository {
     );
   }
 
-  async createPlayer(name: string): Promise<Player> {
+  async createPlayer(name: string, initialScore = 0): Promise<Player> {
     const id = generateId();
     const playerNumber = await this.getNextPlayerNumber();
     const now = new Date().toISOString();
     const cleanName = name.trim();
+    const safeInitialScore = Math.max(0, initialScore || 0);
 
     await this.db.runAsync(
-      'INSERT INTO players (id, player_number, name, active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)',
+      'INSERT INTO players (id, player_number, name, initial_score, active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)',
       id,
       playerNumber,
       cleanName,
+      safeInitialScore,
       now,
       now
     );
@@ -73,21 +104,37 @@ export class PlayerRepository {
       id,
       player_number: playerNumber,
       name: cleanName,
+      initial_score: safeInitialScore,
       active: 1,
       created_at: now,
       updated_at: now,
     };
   }
 
-  async updatePlayerName(id: string, newName: string): Promise<void> {
+  async updatePlayer(id: string, newName: string, initialScore?: number): Promise<void> {
     const now = new Date().toISOString();
     const cleanName = newName.trim();
-    await this.db.runAsync(
-      'UPDATE players SET name = ?, updated_at = ? WHERE id = ?',
-      cleanName,
-      now,
-      id
-    );
+    if (initialScore !== undefined) {
+      const safeScore = Math.max(0, initialScore);
+      await this.db.runAsync(
+        'UPDATE players SET name = ?, initial_score = ?, updated_at = ? WHERE id = ?',
+        cleanName,
+        safeScore,
+        now,
+        id
+      );
+    } else {
+      await this.db.runAsync(
+        'UPDATE players SET name = ?, updated_at = ? WHERE id = ?',
+        cleanName,
+        now,
+        id
+      );
+    }
+  }
+
+  async updatePlayerName(id: string, newName: string): Promise<void> {
+    return this.updatePlayer(id, newName);
   }
 
   async getPlayerWithStats(id: string): Promise<PlayerWithStats | null> {
@@ -96,16 +143,19 @@ export class PlayerRepository {
 
     const stats = await this.db.getFirstAsync<{ total_score: number | null; rounds_played: number }>(
       `SELECT
-        COALESCE(SUM(points), 0) AS total_score,
-        COUNT(id) AS rounds_played
-       FROM scores
-       WHERE player_id = ?`,
+        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points), 0)) AS total_score,
+        COUNT(s.id) AS rounds_played
+       FROM players p
+       LEFT JOIN scores s ON s.player_id = p.id
+       WHERE p.id = ?
+       GROUP BY p.id`,
       id
     );
 
     return {
       ...player,
-      total_score: stats?.total_score ?? 0,
+      initial_score: player.initial_score ?? 0,
+      total_score: stats?.total_score ?? (player.initial_score ?? 0),
       rounds_played: stats?.rounds_played ?? 0,
     };
   }

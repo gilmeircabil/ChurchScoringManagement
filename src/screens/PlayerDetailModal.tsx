@@ -8,20 +8,27 @@ import {
   StyleSheet,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Player, PlayerWithStats, PlayerScoreHistoryItem } from '../types';
 import { COLORS } from '../constants/colors';
 import { getQuizService } from '../services/quizService';
-import { formatPlayerIdentifier, formatDateDisplay } from '../utils/formatters';
-import { validatePlayerName } from '../utils/validation';
+import { formatDateDisplay } from '../utils/formatters';
+import { validatePlayerName, validateScore } from '../utils/validation';
 import { DuplicateConfirmModal } from '../components/DuplicateConfirmModal';
+import { ScoreModal } from '../components/ScoreModal';
+import { ConfirmationModal } from '../components/ConfirmationModal';
+import { DestructiveConfirmModal } from '../components/DestructiveConfirmModal';
+import { PlayerIdBadge } from '../components/PlayerIdBadge';
+import { PendingScorePlaceholder } from '../components/PendingScorePlaceholder';
 
 interface PlayerDetailModalProps {
   visible: boolean;
   player: Player | null;
   onClose: () => void;
   onPlayerUpdated: () => void;
+  onPlayerDeleted?: () => void;
 }
 
 export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
@@ -29,6 +36,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   player,
   onClose,
   onPlayerUpdated,
+  onPlayerDeleted,
 }) => {
   const [stats, setStats] = useState<PlayerWithStats | null>(null);
   const [history, setHistory] = useState<PlayerScoreHistoryItem[]>([]);
@@ -37,17 +45,13 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   // Edit state
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
+  const [editedInitialScore, setEditedInitialScore] = useState('0');
   const [editError, setEditError] = useState<string | null>(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
-  useEffect(() => {
-    if (visible && player) {
-      setIsEditing(false);
-      setEditedName(player.name);
-      setEditError(null);
-      loadPlayerDetails(player.id);
-    }
-  }, [visible, player]);
+  // Score edit state
+  const [editingScoreItem, setEditingScoreItem] = useState<PlayerScoreHistoryItem | null>(null);
+  const [unlockConfirmItem, setUnlockConfirmItem] = useState<PlayerScoreHistoryItem | null>(null);
 
   const loadPlayerDetails = async (playerId: string) => {
     setLoading(true);
@@ -64,11 +68,28 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (visible && player) {
+      setIsEditing(false);
+      setEditedName(player.name);
+      setEditedInitialScore(String(player.initial_score ?? 0));
+      setEditError(null);
+      loadPlayerDetails(player.id);
+    }
+  }, [visible, player]);
+
   const handleSaveName = async (forceDuplicate = false) => {
     if (!player) return;
     const validation = validatePlayerName(editedName);
     if (!validation.isValid) {
       setEditError(validation.error || 'Invalid name');
+      return;
+    }
+
+    const scoreStr = editedInitialScore.trim() === '' ? '0' : editedInitialScore.trim();
+    const scoreValidation = validateScore(scoreStr);
+    if (!scoreValidation.isValid) {
+      setEditError(scoreValidation.error || 'Invalid default score');
       return;
     }
 
@@ -83,12 +104,63 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
         }
       }
 
-      await service.players.updatePlayerName(player.id, validation.trimmedName);
+      await service.players.updatePlayer(player.id, validation.trimmedName, scoreValidation.points);
       setIsEditing(false);
       onPlayerUpdated();
       loadPlayerDetails(player.id);
-    } catch (err) {
-      setEditError('Unable to update player name.');
+    } catch (_err) {
+      setEditError('Unable to update player details.');
+    }
+  };
+
+  const handleEditHistoryScore = (item: PlayerScoreHistoryItem) => {
+    if (item.round_status === 'LOCKED') {
+      setUnlockConfirmItem(item);
+    } else if (item.round_status === 'ACTIVE') {
+      setEditingScoreItem(item);
+    }
+  };
+
+  const handleUnlockAndEdit = async () => {
+    if (!unlockConfirmItem) return;
+    const target = unlockConfirmItem;
+    setUnlockConfirmItem(null);
+    try {
+      const service = await getQuizService();
+      await service.rounds.updateRoundStatus(target.round_id, 'ACTIVE');
+      setEditingScoreItem({ ...target, round_status: 'ACTIVE' });
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Unable to unlock round.');
+    }
+  };
+
+  const handleSaveHistoryScore = async (points: number) => {
+    if (!player || !editingScoreItem) return;
+    try {
+      const service = await getQuizService();
+      await service.scores.saveScore(editingScoreItem.round_id, player.id, points);
+      setEditingScoreItem(null);
+      await loadPlayerDetails(player.id);
+      onPlayerUpdated();
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Unable to save score.');
+    }
+  };
+
+  // Delete player
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const handleDeletePlayer = async () => {
+    if (!player) return;
+    try {
+      const service = await getQuizService();
+      await service.players.deletePlayer(player.id);
+      setShowDeleteConfirm(false);
+      onPlayerUpdated();
+      if (onPlayerDeleted) onPlayerDeleted();
+      onClose();
+    } catch (_err) {
+      Alert.alert('Error', 'Unable to delete player.');
     }
   };
 
@@ -104,11 +176,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               <Text style={styles.title} numberOfLines={1}>
                 {stats?.name || player.name}
               </Text>
-              <View style={styles.idBadge}>
-                <Text style={styles.idText}>
-                  {formatPlayerIdentifier(stats?.player_number || player.player_number)}
-                </Text>
-              </View>
+              <PlayerIdBadge playerNumber={stats?.player_number || player.player_number} size="md" />
             </View>
 
             <TouchableOpacity style={styles.closeButton} onPress={onClose}>
@@ -116,7 +184,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Edit Name section */}
+          {/* Edit Name & Score section */}
           {isEditing ? (
             <View style={styles.editSection}>
               <Text style={styles.fieldLabel}>Player Name</Text>
@@ -131,6 +199,20 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                 placeholder="Enter player name"
                 placeholderTextColor={COLORS.textMuted}
               />
+
+              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Default / Starting Score</Text>
+              <TextInput
+                style={[styles.input, editError ? styles.inputError : null]}
+                value={editedInitialScore}
+                onChangeText={(t) => {
+                  setEditedInitialScore(t);
+                  if (editError) setEditError(null);
+                }}
+                keyboardType="number-pad"
+                placeholder="0"
+                placeholderTextColor={COLORS.textMuted}
+                maxLength={6}
+              />
               {editError && <Text style={styles.errorText}>{editError}</Text>}
 
               <View style={styles.editButtonsRow}>
@@ -139,6 +221,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   onPress={() => {
                     setIsEditing(false);
                     setEditedName(player.name);
+                    setEditedInitialScore(String(player.initial_score ?? 0));
                     setEditError(null);
                   }}
                 >
@@ -158,11 +241,12 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
               style={styles.editNameButton}
               onPress={() => {
                 setEditedName(stats?.name || player.name);
+                setEditedInitialScore(String(stats?.initial_score ?? player.initial_score ?? 0));
                 setIsEditing(true);
               }}
             >
               <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.editNameButtonText}>Edit Name</Text>
+              <Text style={styles.editNameButtonText}>Edit Player</Text>
             </TouchableOpacity>
           )}
 
@@ -185,6 +269,16 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                   <Text style={styles.statBigValue}>{stats?.rounds_played ?? 0}</Text>
                   <Text style={styles.statSubLabel}>Completed Sessions</Text>
                 </View>
+
+                {Boolean(stats?.initial_score && stats.initial_score > 0) && (
+                  <View style={styles.statCard}>
+                    <Text style={styles.statLabel}>Default Score</Text>
+                    <Text style={[styles.statBigValue, { color: COLORS.secondary }]}>
+                      {stats?.initial_score}
+                    </Text>
+                    <Text style={styles.statSubLabel}>Starting Points</Text>
+                  </View>
+                )}
               </View>
 
               {/* Score History */}
@@ -198,7 +292,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     </Text>
                   </View>
                 ) : (
-                  history.map((item, idx) => (
+                  history.map((item) => (
                     <View key={item.score_id} style={styles.historyItem}>
                       <View style={styles.historyLeft}>
                         <Text style={styles.historyDate}>
@@ -209,15 +303,78 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                           {item.round_status}
                         </Text>
                       </View>
-                      <View style={styles.historyPointsBadge}>
-                        <Text style={styles.historyPointsText}>+{item.points}</Text>
+                      <View style={styles.historyRight}>
+                        {item.round_status === 'DRAFT' ? (
+                          <PendingScorePlaceholder size="md" />
+                        ) : (
+                          <>
+                            <TouchableOpacity
+                              style={styles.historyPointsBadge}
+                              onPress={() => handleEditHistoryScore(item)}
+                              activeOpacity={0.7}
+                              accessibilityLabel={`Score +${item.points}. Tap to edit`}
+                            >
+                              <Text style={styles.historyPointsText}>+{item.points}</Text>
+                            </TouchableOpacity>
+                            {item.round_status === 'ACTIVE' && (
+                              <TouchableOpacity
+                                style={styles.historyEditScoreButton}
+                                onPress={() => handleEditHistoryScore(item)}
+                                activeOpacity={0.7}
+                                accessibilityLabel="Edit round score"
+                              >
+                                <Ionicons name="pencil" size={12} color={COLORS.primary} />
+                                <Text style={styles.historyEditScoreText}>Edit</Text>
+                              </TouchableOpacity>
+                            )}
+                          </>
+                        )}
                       </View>
                     </View>
                   ))
                 )}
               </View>
+
+              {/* Delete Player */}
+              <View style={styles.deleteContainer}>
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={() => setShowDeleteConfirm(true)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                  <Text style={styles.deleteButtonText}>Delete Player</Text>
+                </TouchableOpacity>
+              </View>
             </ScrollView>
           )}
+
+          {/* Edit Score Modal */}
+          {editingScoreItem && (
+            <ScoreModal
+              visible={Boolean(editingScoreItem)}
+              title="Edit Round Score"
+              subtitle={`Round: ${formatDateDisplay(editingScoreItem.round_date)}`}
+              playerName={stats?.name || player.name}
+              playerNumber={stats?.player_number || player.player_number}
+              currentScore={editingScoreItem.points}
+              onSave={handleSaveHistoryScore}
+              onClose={() => setEditingScoreItem(null)}
+            />
+          )}
+
+          {/* Unlock Round Confirmation Modal */}
+          <ConfirmationModal
+            visible={Boolean(unlockConfirmItem)}
+            title="Unlock Round?"
+            message={`This round (${unlockConfirmItem ? formatDateDisplay(unlockConfirmItem.round_date) : ''}) is locked.`}
+            subMessage="Unlock this round to edit the score?"
+            confirmText="Unlock & Edit"
+            cancelText="Cancel"
+            iconName="lock-open-outline"
+            onConfirm={handleUnlockAndEdit}
+            onCancel={() => setUnlockConfirmItem(null)}
+          />
 
           {/* Duplicate Name Confirmation Modal for Edit */}
           <DuplicateConfirmModal
@@ -230,6 +387,17 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             }}
             onChangeName={() => setShowDuplicateModal(false)}
             onCancel={() => setShowDuplicateModal(false)}
+          />
+
+          {/* Delete Player Confirmation */}
+          <DestructiveConfirmModal
+            visible={showDeleteConfirm}
+            title="Delete Player?"
+            message={`This will permanently delete ${stats?.name || player.name} and all their score history. This action cannot be undone.`}
+            confirmWord="DELETE"
+            onConfirm={handleDeletePlayer}
+            onCancel={() => setShowDeleteConfirm(false)}
+            iconName="trash-outline"
           />
         </View>
       </View>
@@ -269,19 +437,6 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginRight: 8,
     flexShrink: 1,
-  },
-  idBadge: {
-    backgroundColor: COLORS.surfaceVariant,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  idText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
   },
   closeButton: {
     padding: 6,
@@ -436,15 +591,57 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     marginTop: 2,
   },
+  historyRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   historyPointsBadge: {
     backgroundColor: COLORS.secondaryContainer,
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 10,
   },
   historyPointsText: {
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.onSecondaryContainer,
+  },
+  historyEditScoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryContainer,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 8,
+    gap: 3,
+  },
+  historyEditScoreText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.onPrimaryContainer,
+  },
+  deleteContainer: {
+    marginTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    paddingTop: 20,
+    alignItems: 'center',
+  },
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    backgroundColor: COLORS.dangerContainer,
+  },
+  deleteButtonText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.danger,
   },
 });

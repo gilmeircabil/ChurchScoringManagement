@@ -33,11 +33,4 @@ export const COLORS = {
   danger: '#EF4444',
   dangerContainer: '#FEE2E2',
   onDangerContainer: '#991B1B',
-
-  // Status badges
-  statusDraft: '#F59E0B',
-  statusActive: '#10B981',
-  statusLocked: '#64748B',
-
-  cardShadow: 'rgba(15, 23, 42, 0.08)',
 };

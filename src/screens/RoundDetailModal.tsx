@@ -11,10 +11,14 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getQuizService } from '../services/quizService';
-import { Round, GroupDetail } from '../types';
+import { Round, GroupDetail, AssignedMember } from '../types';
 import { COLORS } from '../constants/colors';
-import { formatDateDisplay, formatPlayerIdentifier } from '../utils/formatters';
+import { formatDateDisplay, pluralize } from '../utils/formatters';
 import { ConfirmationModal } from '../components/ConfirmationModal';
+import { ScoreModal } from '../components/ScoreModal';
+import { RoundStatusBadge } from '../components/RoundStatusBadge';
+import { PlayerIdBadge } from '../components/PlayerIdBadge';
+import { PendingScorePlaceholder } from '../components/PendingScorePlaceholder';
 
 interface RoundDetailModalProps {
   visible: boolean;
@@ -37,12 +41,7 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
     unassignedCount: number;
   }>({ totalPlayers: 0, assignedCount: 0, unassignedCount: 0 });
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
-
-  useEffect(() => {
-    if (visible && round) {
-      loadDetails(round.id);
-    }
-  }, [visible, round]);
+  const [scoringMember, setScoringMember] = useState<AssignedMember | null>(null);
 
   const loadDetails = async (roundId: string) => {
     setLoading(true);
@@ -59,6 +58,12 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (visible && round) {
+      loadDetails(round.id);
+    }
+  }, [visible, round]);
+
   const handleUnlockRound = async () => {
     if (!round) return;
     try {
@@ -67,8 +72,20 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
       setShowUnlockConfirm(false);
       onClose();
       onSelectWorkingRound(round.id);
-    } catch (err) {
+    } catch (_err) {
       Alert.alert('Error', 'Unable to unlock round.');
+    }
+  };
+
+  const handleSaveScore = async (points: number) => {
+    if (!round || !scoringMember) return;
+    try {
+      const service = await getQuizService();
+      await service.scores.saveScore(round.id, scoringMember.player_id, points);
+      setScoringMember(null);
+      loadDetails(round.id);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Unable to save score.');
     }
   };
 
@@ -83,16 +100,7 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>{formatDateDisplay(round.round_date)}</Text>
               <View style={styles.statusRow}>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    round.status === 'LOCKED' && styles.badgeLocked,
-                    round.status === 'ACTIVE' && styles.badgeActive,
-                    round.status === 'DRAFT' && styles.badgeDraft,
-                  ]}
-                >
-                  <Text style={styles.statusText}>{round.status}</Text>
-                </View>
+                <RoundStatusBadge status={round.status} />
                 <Text style={styles.summaryText}>
                   {round.group_count} Groups • {counts.assignedCount} Players
                 </Text>
@@ -114,9 +122,10 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
                 <View key={group.id} style={styles.groupCard}>
                   <View style={styles.groupHeader}>
                     <Text style={styles.groupTitle}>GROUP {group.group_number}</Text>
-                    <Text style={styles.groupCount}>
-                      {group.members.length} {group.members.length === 1 ? 'player' : 'players'}
-                    </Text>
+                  <Text style={styles.groupCount}>
+                    {group.members.length} {pluralize(group.members.length, 'player')}
+                  </Text>
+
                   </View>
 
                   {group.members.length === 0 ? (
@@ -128,15 +137,39 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
                           <Text style={styles.memberName} numberOfLines={1}>
                             {member.player_name}
                           </Text>
-                          <View style={styles.idBadge}>
-                            <Text style={styles.idText}>
-                              {formatPlayerIdentifier(member.player_number)}
-                            </Text>
+                          <PlayerIdBadge playerNumber={member.player_number} />
+                        </View>
+                        {round.status === 'DRAFT' ? (
+                          <PendingScorePlaceholder />
+                        ) : (
+                          <View style={styles.scoreActionRow}>
+                            <TouchableOpacity
+                              style={styles.scoreBadge}
+                              onPress={() => {
+                                if (round.status === 'LOCKED') {
+                                  setShowUnlockConfirm(true);
+                                } else {
+                                  setScoringMember(member);
+                                }
+                              }}
+                              activeOpacity={0.7}
+                              accessibilityLabel={`Score +${member.round_score}. Tap to edit`}
+                            >
+                              <Text style={styles.scoreText}>+{member.round_score}</Text>
+                            </TouchableOpacity>
+                            {round.status === 'ACTIVE' && (
+                              <TouchableOpacity
+                                style={styles.editScoreButton}
+                                onPress={() => setScoringMember(member)}
+                                activeOpacity={0.7}
+                                accessibilityLabel="Edit round score"
+                              >
+                                <Ionicons name="pencil" size={11} color={COLORS.onPrimaryContainer} style={{ marginRight: 2 }} />
+                                <Text style={styles.editScoreText}>Edit</Text>
+                              </TouchableOpacity>
+                            )}
                           </View>
-                        </View>
-                        <View style={styles.scoreBadge}>
-                          <Text style={styles.scoreText}>+{member.round_score}</Text>
-                        </View>
+                        )}
                       </View>
                     ))
                   )}
@@ -180,6 +213,20 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
             onConfirm={handleUnlockRound}
             onCancel={() => setShowUnlockConfirm(false)}
           />
+
+          {/* Edit Score Modal */}
+          {scoringMember && (
+            <ScoreModal
+              visible={Boolean(scoringMember)}
+              title="Edit Round Score"
+              subtitle={`Round: ${formatDateDisplay(round.round_date)}`}
+              playerName={scoringMember.player_name}
+              playerNumber={scoringMember.player_number}
+              currentScore={scoringMember.round_score}
+              onSave={handleSaveScore}
+              onClose={() => setScoringMember(null)}
+            />
+          )}
         </View>
       </View>
     </Modal>
@@ -219,27 +266,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 4,
-  },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  badgeLocked: {
-    backgroundColor: COLORS.surfaceVariant,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  badgeActive: {
-    backgroundColor: COLORS.successContainer,
-  },
-  badgeDraft: {
-    backgroundColor: COLORS.warningContainer,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
   },
   summaryText: {
     fontSize: 13,
@@ -309,29 +335,35 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginRight: 6,
   },
-  idBadge: {
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 5,
-    paddingVertical: 1,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  idText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+  scoreActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   scoreBadge: {
     backgroundColor: COLORS.secondaryContainer,
     paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+    paddingVertical: 3,
+    borderRadius: 8,
   },
   scoreText: {
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.onSecondaryContainer,
+  },
+  editScoreButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primaryContainer,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 2,
+  },
+  editScoreText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.onPrimaryContainer,
   },
   footerRow: {
     marginTop: 12,

@@ -15,26 +15,28 @@ import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { DuplicateConfirmModal } from '../components/DuplicateConfirmModal';
+import { PlayerIdBadge } from '../components/PlayerIdBadge';
 import { PlayerDetailModal } from './PlayerDetailModal';
 import { getQuizService } from '../services/quizService';
-import { Player, MainTab } from '../types';
+import { Player, PlayerWithStats, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
-import { formatPlayerIdentifier } from '../utils/formatters';
-import { validatePlayerName } from '../utils/validation';
+import { pluralize } from '../utils/formatters';
+import { validatePlayerName, validateScore } from '../utils/validation';
 
 interface PlayersScreenProps {
   onNavigate: (tab: MainTab) => void;
   onOpenSettings: () => void;
 }
 
-export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate, onOpenSettings }) => {
-  const [players, setPlayers] = useState<Player[]>([]);
+export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNavigate, onOpenSettings }) => {
+  const [players, setPlayers] = useState<PlayerWithStats[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
 
   // Add Player State
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerScore, setNewPlayerScore] = useState('0');
   const [addError, setAddError] = useState<string | null>(null);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
@@ -44,7 +46,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate, onOpen
   const loadPlayers = useCallback(async (query = searchQuery) => {
     try {
       const service = await getQuizService();
-      const list = await service.players.searchPlayers(query, true);
+      const list = await service.players.searchPlayersWithStats(query, true);
       setPlayers(list);
     } catch (err) {
       console.error('Failed to load players:', err);
@@ -69,6 +71,13 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate, onOpen
       return;
     }
 
+    const scoreStr = newPlayerScore.trim() === '' ? '0' : newPlayerScore.trim();
+    const scoreValidation = validateScore(scoreStr);
+    if (!scoreValidation.isValid) {
+      setAddError(scoreValidation.error || 'Invalid score');
+      return;
+    }
+
     try {
       const service = await getQuizService();
 
@@ -80,14 +89,15 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate, onOpen
         }
       }
 
-      await service.players.createPlayer(validation.trimmedName);
+      await service.players.createPlayer(validation.trimmedName, scoreValidation.points);
       setNewPlayerName('');
+      setNewPlayerScore('0');
       setAddError(null);
       setIsAddModalVisible(false);
       setShowDuplicateModal(false);
       loadPlayers('');
       setSearchQuery('');
-    } catch (err) {
+    } catch (_err) {
       setAddError('Unable to save player. Please try again.');
     }
   };
@@ -96,7 +106,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate, onOpen
     <View style={styles.container}>
       <Header
         title="Players"
-        subtitle={`${players.length} registered ${players.length === 1 ? 'player' : 'players'}`}
+        subtitle={`${players.length} registered ${pluralize(players.length, 'player')}`}
         onSettingsPress={onOpenSettings}
       />
 
@@ -123,6 +133,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate, onOpen
           style={styles.addPlayerButton}
           onPress={() => {
             setNewPlayerName('');
+            setNewPlayerScore('0');
             setAddError(null);
             setIsAddModalVisible(true);
           }}
@@ -154,7 +165,12 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate, onOpen
               title="No players yet."
               description="Add your first player to get started with quiz rounds."
               actionText="Add Player"
-              onActionPress={() => setIsAddModalVisible(true)}
+              onActionPress={() => {
+                setNewPlayerName('');
+                setNewPlayerScore('0');
+                setAddError(null);
+                setIsAddModalVisible(true);
+              }}
             />
           )}
         </View>
@@ -173,14 +189,14 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate, onOpen
                 <Text style={styles.playerName} numberOfLines={1}>
                   {item.name}
                 </Text>
-                <View style={styles.idBadge}>
-                  <Text style={styles.idText}>
-                    {formatPlayerIdentifier(item.player_number)}
-                  </Text>
-                </View>
+                <PlayerIdBadge playerNumber={item.player_number} />
               </View>
 
               <View style={styles.cardRight}>
+                <View style={styles.playerScoreBadge}>
+                  <Text style={styles.playerScoreValue}>{item.total_score}</Text>
+                  <Text style={styles.playerScoreUnit}>pts</Text>
+                </View>
                 <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
               </View>
             </TouchableOpacity>
@@ -215,6 +231,48 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate, onOpen
               autoFocus
               autoCapitalize="words"
             />
+
+            <Text style={styles.fieldLabel}>Default Score</Text>
+            <View style={styles.scoreInputContainer}>
+              <TextInput
+                style={styles.scoreInput}
+                placeholder="0"
+                placeholderTextColor={COLORS.textMuted}
+                value={newPlayerScore}
+                onChangeText={(text) => {
+                  setNewPlayerScore(text);
+                  if (addError) setAddError(null);
+                }}
+                keyboardType="number-pad"
+                selectTextOnFocus
+                maxLength={6}
+              />
+              <View style={styles.scorePresetsRow}>
+                {[0, 5, 10, 15, 20].map((preset) => (
+                  <TouchableOpacity
+                    key={preset}
+                    style={[
+                      styles.scorePresetPill,
+                      newPlayerScore === String(preset) && styles.scorePresetPillActive,
+                    ]}
+                    onPress={() => {
+                      setNewPlayerScore(String(preset));
+                      if (addError) setAddError(null);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.scorePresetPillText,
+                        newPlayerScore === String(preset) && styles.scorePresetPillTextActive,
+                      ]}
+                    >
+                      {preset}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             {addError && <Text style={styles.errorText}>{addError}</Text>}
 
             <View style={styles.addModalButtons}>
@@ -352,23 +410,29 @@ const styles = StyleSheet.create({
     marginRight: 8,
     flexShrink: 1,
   },
-  idBadge: {
-    backgroundColor: COLORS.surfaceVariant,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  idText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    fontVariant: ['tabular-nums'],
-  },
   cardRight: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+  },
+  playerScoreBadge: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    backgroundColor: COLORS.primaryContainer,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  playerScoreValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: COLORS.onPrimaryContainer,
+  },
+  playerScoreUnit: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.primary,
+    marginLeft: 2,
   },
   modalOverlay: {
     flex: 1,
@@ -415,6 +479,49 @@ const styles = StyleSheet.create({
   nameInputError: {
     borderColor: COLORS.danger,
     backgroundColor: COLORS.dangerContainer,
+  },
+  scoreInputContainer: {
+    marginBottom: 8,
+  },
+  scoreInput: {
+    backgroundColor: COLORS.surfaceVariant,
+    borderWidth: 1.5,
+    borderColor: COLORS.borderDark,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    fontSize: 18,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  scorePresetsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  scorePresetPill: {
+    flex: 1,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: COLORS.surfaceVariant,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scorePresetPillActive: {
+    backgroundColor: COLORS.primaryContainer,
+    borderColor: COLORS.primary,
+  },
+  scorePresetPillText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+  },
+  scorePresetPillTextActive: {
+    color: COLORS.onPrimaryContainer,
   },
   errorText: {
     color: COLORS.danger,

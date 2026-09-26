@@ -7,7 +7,6 @@ import {
   ScrollView,
   Alert,
   TextInput,
-  ActivityIndicator,
   Modal,
   Platform,
 } from 'react-native';
@@ -16,6 +15,8 @@ import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Header } from '../components/Header';
 import { ConfirmationModal } from '../components/ConfirmationModal';
+import { DestructiveConfirmModal } from '../components/DestructiveConfirmModal';
+import { StatusBanner, StatusMessage } from '../components/StatusBanner';
 import { getQuizService } from '../services/quizService';
 import { COLORS } from '../constants/colors';
 import { APP_CONFIG } from '../constants/config';
@@ -27,7 +28,7 @@ interface SettingsScreenProps {
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   const [loading, setLoading] = useState(false);
-  const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [statusMessage, setStatusMessage] = useState<StatusMessage>(null);
 
   // Raw JSON modal state
   const [isRawJsonModalVisible, setIsRawJsonModalVisible] = useState(false);
@@ -37,6 +38,29 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   // Confirmation modal state
   const [pendingBackupData, setPendingBackupData] = useState<BackupData | null>(null);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
+
+  // Delete all data state
+  const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+
+  const handleDeleteAllData = async () => {
+    setLoading(true);
+    setShowDeleteAllModal(false);
+    try {
+      const service = await getQuizService();
+      await service.backup.deleteAllData();
+      setStatusMessage({
+        type: 'success',
+        text: 'All data has been successfully deleted.',
+      });
+    } catch (err: any) {
+      setStatusMessage({
+        type: 'error',
+        text: err.message || 'Failed to delete all data.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Handle Export Backup
   const handleExportBackup = async () => {
@@ -75,7 +99,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
       setRawJsonText(JSON.stringify(data, null, 2));
       setRawJsonMode('export');
       setIsRawJsonModalVisible(true);
-    } catch (err: any) {
+    } catch (_err: any) {
       Alert.alert('Error', 'Unable to generate JSON preview.');
     } finally {
       setLoading(false);
@@ -176,29 +200,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
         </TouchableOpacity>
 
         {/* STATUS BANNER */}
-        {statusMessage && (
-          <View
-            style={[
-              styles.statusBanner,
-              statusMessage.type === 'success' ? styles.statusSuccess : styles.statusError,
-            ]}
-          >
-            <Ionicons
-              name={statusMessage.type === 'success' ? 'checkmark-circle' : 'alert-circle'}
-              size={20}
-              color={statusMessage.type === 'success' ? COLORS.success : COLORS.danger}
-              style={{ marginRight: 8 }}
-            />
-            <Text
-              style={[
-                styles.statusBannerText,
-                statusMessage.type === 'success' ? styles.statusSuccessText : styles.statusErrorText,
-              ]}
-            >
-              {statusMessage.text}
-            </Text>
-          </View>
-        )}
+        <StatusBanner message={statusMessage} style={{ marginBottom: 14 }} />
 
         {/* BACKUP & RESTORE SECTION */}
         <Text style={styles.sectionHeader}>BACKUP & RESTORE</Text>
@@ -278,17 +280,50 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
           <View style={styles.infoDivider} />
 
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Architecture</Text>
-            <Text style={styles.infoValue}>100% Offline SQLite</Text>
-          </View>
-          <View style={styles.infoDivider} />
-
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Internet Connection</Text>
-            <Text style={[styles.infoValue, { color: COLORS.success }]}>Not Required</Text>
+            <Text style={styles.infoLabel}>Developer</Text>
+            <Text style={[styles.infoValue, { color: COLORS.primary }]}>
+              {APP_CONFIG.developer}
+            </Text>
           </View>
         </View>
+
+        {/* DANGER ZONE SECTION */}
+        <Text style={[styles.sectionHeader, { marginTop: 24, color: COLORS.danger }]}>DANGER ZONE</Text>
+
+        <View style={[styles.card, { borderColor: COLORS.dangerContainer }]}>
+          <Text style={[styles.cardTitle, { color: COLORS.danger }]}>Delete All Data</Text>
+          <Text style={styles.cardDescription}>
+            Permanently erase all players, rounds, groups, and score records. This action cannot be undone.
+          </Text>
+
+          <TouchableOpacity
+            style={styles.dangerButton}
+            onPress={() => setShowDeleteAllModal(true)}
+            disabled={loading}
+          >
+            <Ionicons name="trash-outline" size={18} color={COLORS.danger} style={{ marginRight: 6 }} />
+            <Text style={styles.dangerButtonText}>Delete All Data</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* DEVELOPER CREDIT */}
+        <View style={styles.creditBlock}>
+          <Ionicons name="code-slash" size={14} color={COLORS.textMuted} style={{ marginRight: 6 }} />
+          <Text style={styles.creditText}>
+            {APP_CONFIG.appName} v{APP_CONFIG.version} — developed by {APP_CONFIG.developer}
+          </Text>
+        </View>
       </ScrollView>
+
+      {/* DELETE ALL DATA MODAL */}
+      <DestructiveConfirmModal
+        visible={showDeleteAllModal}
+        title="Delete All Data?"
+        message="This will permanently erase ALL players, rounds, groups, and scores. This cannot be undone."
+        confirmWord="DELETE"
+        onConfirm={handleDeleteAllData}
+        onCancel={() => setShowDeleteAllModal(false)}
+      />
 
       {/* RAW JSON VIEWER / PASTER MODAL */}
       <Modal
@@ -399,30 +434,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 8,
   },
-  statusBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 10,
-    marginBottom: 14,
-  },
-  statusSuccess: {
-    backgroundColor: COLORS.successContainer,
-  },
-  statusError: {
-    backgroundColor: COLORS.dangerContainer,
-  },
-  statusBannerText: {
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-  },
-  statusSuccessText: {
-    color: COLORS.onSuccessContainer,
-  },
-  statusErrorText: {
-    color: COLORS.onDangerContainer,
-  },
   card: {
     backgroundColor: COLORS.surface,
     borderRadius: 14,
@@ -499,6 +510,32 @@ const styles = StyleSheet.create({
   infoDivider: {
     height: 1,
     backgroundColor: COLORS.border,
+  },
+  dangerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.dangerContainer,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  dangerButtonText: {
+    color: COLORS.danger,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  creditBlock: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 28,
+  },
+  creditText: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,

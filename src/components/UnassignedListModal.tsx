@@ -11,7 +11,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { Player } from '../types';
 import { COLORS } from '../constants/colors';
-import { formatPlayerIdentifier } from '../utils/formatters';
+import { pluralize } from '../utils/formatters';
+import { PlayerIdBadge } from './PlayerIdBadge';
 
 interface UnassignedListModalProps {
   visible: boolean;
@@ -40,7 +41,7 @@ export const UnassignedListModal: React.FC<UnassignedListModalProps> = ({
             <View>
               <Text style={styles.title}>Unassigned Players</Text>
               <Text style={styles.subtitle}>
-                {unassignedPlayers.length} {unassignedPlayers.length === 1 ? 'player' : 'players'} waiting for group assignment
+                {unassignedPlayers.length} {pluralize(unassignedPlayers.length, 'player')} waiting for group assignment
               </Text>
             </View>
             <TouchableOpacity style={styles.closeButton} onPress={onClose}>
@@ -91,9 +92,7 @@ export const UnassignedListModal: React.FC<UnassignedListModalProps> = ({
                     <Text style={styles.playerName} numberOfLines={1}>
                       {item.name}
                     </Text>
-                    <View style={styles.idBadge}>
-                      <Text style={styles.idText}>{formatPlayerIdentifier(item.player_number)}</Text>
-                    </View>
+                    <PlayerIdBadge playerNumber={item.player_number} />
                   </View>
                   <View style={styles.assignPill}>
                     <Text style={styles.assignPillText}>Assign</Text>
@@ -190,19 +189,6 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginRight: 8,
     flexShrink: 1,
-  },
-  idBadge: {
-    backgroundColor: COLORS.surfaceVariant,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  idText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
   },
   assignPill: {
     flexDirection: 'row',

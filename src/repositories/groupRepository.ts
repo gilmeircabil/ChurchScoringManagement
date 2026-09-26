@@ -172,10 +172,6 @@ export class GroupRepository {
     });
   }
 
-  async movePlayer(roundId: string, newGroupId: string, playerId: string): Promise<void> {
-    return this.assignPlayerToGroup(roundId, newGroupId, playerId);
-  }
-
   async removePlayerFromRound(roundId: string, playerId: string): Promise<void> {
     await this.db.withTransactionAsync(async () => {
       const round = await this.db.getFirstAsync<{ status: string }>(

@@ -1,3 +1,5 @@
+import { APP_CONFIG } from '../constants/config';
+
 /**
  * Validates player name input.
  * - Name cannot be empty
@@ -83,22 +85,22 @@ export function validateScore(scoreInput: string | number): {
 }
 
 /**
- * Validates round group count (must be integer >= 2)
+ * Validates round group count against the bounds declared in APP_CONFIG.
  */
 export function validateGroupCount(count: number): {
   isValid: boolean;
   error?: string;
 } {
-  if (!Number.isInteger(count) || count < 2) {
+  if (!Number.isInteger(count) || count < APP_CONFIG.minGroupCount) {
     return {
       isValid: false,
-      error: 'Number of groups must be at least 2.',
+      error: `Number of groups must be at least ${APP_CONFIG.minGroupCount}.`,
     };
   }
-  if (count > 20) {
+  if (count > APP_CONFIG.maxGroupCount) {
     return {
       isValid: false,
-      error: 'Maximum number of groups is 20.',
+      error: `Maximum number of groups is ${APP_CONFIG.maxGroupCount}.`,
     };
   }
   return { isValid: true };

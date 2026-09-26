@@ -7,10 +7,10 @@ export function formatPlayerIdentifier(playerNumber: number): string {
 }
 
 /**
- * Returns formatted display name with identifier, e.g. "John — #001"
+ * Returns the correct plural form for a count, e.g. pluralize(1, 'player') -> "player".
  */
-export function formatPlayerWithId(name: string, playerNumber: number): string {
-  return `${name} — ${formatPlayerIdentifier(playerNumber)}`;
+export function pluralize(count: number, singular: string, plural?: string): string {
+  return count === 1 ? singular : plural ?? `${singular}s`;
 }
 
 /**
