@@ -157,17 +157,6 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
                             >
                               <Text style={styles.scoreText}>+{member.round_score}</Text>
                             </TouchableOpacity>
-                            {round.status === 'ACTIVE' && (
-                              <TouchableOpacity
-                                style={styles.editScoreButton}
-                                onPress={() => setScoringMember(member)}
-                                activeOpacity={0.7}
-                                accessibilityLabel="Edit round score"
-                              >
-                                <Ionicons name="pencil" size={11} color={COLORS.onPrimaryContainer} style={{ marginRight: 2 }} />
-                                <Text style={styles.editScoreText}>Edit</Text>
-                              </TouchableOpacity>
-                            )}
                           </View>
                         )}
                       </View>
@@ -350,20 +339,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.onSecondaryContainer,
-  },
-  editScoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.primaryContainer,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    borderRadius: 6,
-    gap: 2,
-  },
-  editScoreText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.onPrimaryContainer,
   },
   footerRow: {
     marginTop: 12,

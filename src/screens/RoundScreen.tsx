@@ -574,17 +574,6 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
                           >
                             <Ionicons name="add" size={14} color={COLORS.primary} />
                           </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.scoreButton}
-                            onPress={() => setScoringMember(member)}
-                            accessibilityLabel="Edit score"
-                          >
-                            <Ionicons name="pencil" size={11} color={COLORS.onPrimaryContainer} style={{ marginRight: 3 }} />
-                            <Text style={styles.scoreButtonText}>
-                              {member.round_score > 0 ? 'Edit' : 'Score'}
-                            </Text>
-                          </TouchableOpacity>
                         </View>
                       ) : isLocked ? (
                         <TouchableOpacity
@@ -977,19 +966,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textSecondary,
     marginLeft: 2,
-  },
-  scoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.primaryContainer,
-    paddingVertical: 5,
-    paddingHorizontal: 7,
-    borderRadius: 7,
-  },
-  scoreButtonText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.onPrimaryContainer,
   },
   lockedScoreBadge: {
     flexDirection: 'row',

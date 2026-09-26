@@ -316,17 +316,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                             >
                               <Text style={styles.historyPointsText}>+{item.points}</Text>
                             </TouchableOpacity>
-                            {item.round_status === 'ACTIVE' && (
-                              <TouchableOpacity
-                                style={styles.historyEditScoreButton}
-                                onPress={() => handleEditHistoryScore(item)}
-                                activeOpacity={0.7}
-                                accessibilityLabel="Edit round score"
-                              >
-                                <Ionicons name="pencil" size={12} color={COLORS.primary} />
-                                <Text style={styles.historyEditScoreText}>Edit</Text>
-                              </TouchableOpacity>
-                            )}
                           </>
                         )}
                       </View>
@@ -606,20 +595,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.onSecondaryContainer,
-  },
-  historyEditScoreButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.primaryContainer,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 8,
-    gap: 3,
-  },
-  historyEditScoreText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.onPrimaryContainer,
   },
   deleteContainer: {
     marginTop: 20,
