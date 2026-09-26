@@ -1,0 +1,105 @@
+/**
+ * Validates player name input.
+ * - Name cannot be empty
+ * - Trim unnecessary spaces
+ * - Prevent completely blank names
+ */
+export function validatePlayerName(name: string): {
+  isValid: boolean;
+  trimmedName: string;
+  error?: string;
+} {
+  const trimmed = (name || '').trim();
+  if (trimmed.length === 0) {
+    return {
+      isValid: false,
+      trimmedName: '',
+      error: 'Player name cannot be empty.',
+    };
+  }
+  if (trimmed.length > 50) {
+    return {
+      isValid: false,
+      trimmedName: trimmed,
+      error: 'Player name cannot exceed 50 characters.',
+    };
+  }
+  return {
+    isValid: true,
+    trimmedName: trimmed,
+  };
+}
+
+/**
+ * Validates score input.
+ * - Whole numbers
+ * - Zero allowed
+ * - Disallow empty values, negative values, and non-numeric characters
+ */
+export function validateScore(scoreInput: string | number): {
+  isValid: boolean;
+  points: number;
+  error?: string;
+} {
+  const str = String(scoreInput).trim();
+  if (str === '') {
+    return {
+      isValid: false,
+      points: 0,
+      error: 'Please enter a valid number of points.',
+    };
+  }
+
+  // Check if string contains only digits
+  if (!/^\d+$/.test(str)) {
+    return {
+      isValid: false,
+      points: 0,
+      error: 'Please enter a valid whole number (no decimals or negative values).',
+    };
+  }
+
+  const parsed = parseInt(str, 10);
+  if (isNaN(parsed) || parsed < 0) {
+    return {
+      isValid: false,
+      points: 0,
+      error: 'Please enter a valid number of points.',
+    };
+  }
+
+  if (parsed > 100000) {
+    return {
+      isValid: false,
+      points: 0,
+      error: 'Score is too large (maximum 100,000 points per round).',
+    };
+  }
+
+  return {
+    isValid: true,
+    points: parsed,
+  };
+}
+
+/**
+ * Validates round group count (must be integer >= 2)
+ */
+export function validateGroupCount(count: number): {
+  isValid: boolean;
+  error?: string;
+} {
+  if (!Number.isInteger(count) || count < 2) {
+    return {
+      isValid: false,
+      error: 'Number of groups must be at least 2.',
+    };
+  }
+  if (count > 20) {
+    return {
+      isValid: false,
+      error: 'Maximum number of groups is 20.',
+    };
+  }
+  return { isValid: true };
+}
