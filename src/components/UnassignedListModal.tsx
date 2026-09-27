@@ -7,13 +7,13 @@ import {
   FlatList,
   TouchableOpacity,
   StyleSheet,
-  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Player } from '../types';
 import { COLORS } from '../constants/colors';
 import { pluralize } from '../utils/formatters';
 import { PlayerIdBadge } from './PlayerIdBadge';
+import { SearchBar } from './SearchBar';
 
 interface UnassignedListModalProps {
   visible: boolean;
@@ -53,21 +53,14 @@ export const UnassignedListModal: React.FC<UnassignedListModalProps> = ({
           </View>
 
           {/* Search bar inside unassigned list */}
-          <View style={styles.searchBox}>
-            <Ionicons name="search-outline" size={18} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Filter unassigned players..."
-              placeholderTextColor={COLORS.textMuted}
-              value={filterText}
-              onChangeText={setFilterText}
-            />
-            {filterText.length > 0 && (
-              <TouchableOpacity onPress={() => setFilterText('')}>
-                <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-            )}
-          </View>
+          <SearchBar
+            value={filterText}
+            onChangeText={setFilterText}
+            placeholder="Filter unassigned players..."
+            matchCount={filtered.length}
+            showMatchCount={filterText.trim().length > 0}
+            style={{ marginBottom: 12 }}
+          />
 
           {filtered.length === 0 ? (
             <View style={styles.emptyContainer}>
@@ -164,21 +157,6 @@ const styles = StyleSheet.create({
     padding: 6,
     borderRadius: 20,
     backgroundColor: COLORS.surfaceVariant,
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.surfaceVariant,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 12,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: COLORS.textPrimary,
-    padding: 0,
   },
   listContent: {
     paddingBottom: 16,

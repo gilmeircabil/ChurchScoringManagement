@@ -8,4 +8,14 @@ export const APP_CONFIG = {
   minGroupCount: 2,
   maxGroupCount: 12,
   exportFileNamePrefix: 'quiz_score_backup',
+  defaultItemPoints: {
+    book: 10,
+    pen: 5,
+    paper: 5,
+  },
+  defaultItemNames: {
+    book: 'Book',
+    pen: 'Pen',
+    paper: 'Paper',
+  },
 };

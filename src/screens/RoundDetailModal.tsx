@@ -17,6 +17,7 @@ import { COLORS } from '../constants/colors';
 import { formatDateDisplay, pluralize } from '../utils/formatters';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { ScoreModal } from '../components/ScoreModal';
+import { GroupItemsModal } from '../components/GroupItemsModal';
 import { RoundStatusBadge } from '../components/RoundStatusBadge';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
 import { PendingScorePlaceholder } from '../components/PendingScorePlaceholder';
@@ -43,6 +44,7 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
   }>({ totalPlayers: 0, assignedCount: 0, unassignedCount: 0 });
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
   const [scoringMember, setScoringMember] = useState<AssignedMember | null>(null);
+  const [selectedGroupForItems, setSelectedGroupForItems] = useState<GroupDetail | null>(null);
 
   const loadDetails = async (roundId: string) => {
     setLoading(true);
@@ -90,6 +92,51 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
     }
   };
 
+  const handleSaveGroupItems = async (data: {
+    name?: string | null;
+    book_count: number;
+    pen_count: number;
+    paper_count: number;
+    book_points: number;
+    pen_points: number;
+    paper_points: number;
+    book_name: string;
+    pen_name: string;
+    paper_name: string;
+    applyToAllGroups: boolean;
+  }) => {
+    if (!round || !selectedGroupForItems) return;
+    try {
+      const service = await getQuizService();
+      if (data.applyToAllGroups) {
+        await service.groups.updateRoundItemRules(round.id, {
+          book_points: data.book_points,
+          pen_points: data.pen_points,
+          paper_points: data.paper_points,
+          book_name: data.book_name,
+          pen_name: data.pen_name,
+          paper_name: data.paper_name,
+        });
+      }
+      await service.groups.updateGroupItems(selectedGroupForItems.id, {
+        name: data.name,
+        book_count: data.book_count,
+        pen_count: data.pen_count,
+        paper_count: data.paper_count,
+        book_points: data.book_points,
+        pen_points: data.pen_points,
+        paper_points: data.paper_points,
+        book_name: data.book_name,
+        pen_name: data.pen_name,
+        paper_name: data.paper_name,
+      });
+      setSelectedGroupForItems(null);
+      loadDetails(round.id);
+    } catch (err: any) {
+      Alert.alert('Error', err.message || 'Unable to update group items.');
+    }
+  };
+
   if (!round) return null;
 
   return (
@@ -124,11 +171,22 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
               {groupDetails.map((group) => (
                 <View key={group.id} style={styles.groupCard}>
                   <View style={styles.groupHeader}>
-                    <Text style={styles.groupTitle}>GROUP {group.group_number}</Text>
-                  <Text style={styles.groupCount}>
-                    {group.members.length} {pluralize(group.members.length, 'player')}
-                  </Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.groupTitle} numberOfLines={1}>
+                        GROUP {group.group_number}{group.name ? ` — ${group.name}` : ''}
+                      </Text>
+                      <Text style={styles.groupCount}>
+                        {group.members.length} {pluralize(group.members.length, 'player')}
+                      </Text>
+                    </View>
 
+                    {round.status !== 'DRAFT' && (
+                      <View style={styles.groupTotalBadge}>
+                        <Text style={styles.groupTotalBadgeLabel}>TOTAL</Text>
+                        <Text style={styles.groupTotalBadgeValue}>{group.total_score}</Text>
+                        <Text style={styles.groupTotalBadgePts}>pts</Text>
+                      </View>
+                    )}
                   </View>
 
                   {group.members.length === 0 ? (
@@ -164,6 +222,46 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
                         )}
                       </View>
                     ))
+                  )}
+
+                  {/* Group Items Bonus Footer */}
+                  {round.status !== 'DRAFT' && (
+                    <View style={styles.groupDetailFooter}>
+                      <View style={styles.groupDetailBreakdown}>
+                        <Text style={styles.groupDetailBreakdownText}>
+                          Quiz: {group.quiz_score} pts • Items: +{group.items_bonus} pts
+                        </Text>
+                        {group.items_bonus > 0 && (
+                          <Text style={styles.groupDetailItemsSummary}>
+                            📖 {group.book_count} {group.book_name || 'Book'} • 🖊️ {group.pen_count} {group.pen_name || 'Pen'} • 📄 {group.paper_count} {group.paper_name || 'Paper'}
+                          </Text>
+                        )}
+                      </View>
+
+                      <TouchableOpacity
+                        style={styles.groupDetailItemsBtn}
+                        onPress={() => {
+                          if (round.status === 'LOCKED') {
+                            setShowUnlockConfirm(true);
+                          } else {
+                            setSelectedGroupForItems(group);
+                          }
+                        }}
+                      >
+                        <Ionicons
+                          name={round.status === 'LOCKED' ? 'lock-closed' : 'pricetag'}
+                          size={12}
+                          color={COLORS.primary}
+                        />
+                        <Text style={styles.groupDetailItemsBtnText}>
+                          {round.status === 'LOCKED'
+                            ? `+${group.items_bonus} pts`
+                            : group.items_bonus > 0
+                            ? `Edit (+${group.items_bonus})`
+                            : '+ Add Items'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </View>
               ))}
@@ -217,6 +315,29 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
               currentScore={scoringMember.round_score}
               onSave={handleSaveScore}
               onClose={() => setScoringMember(null)}
+            />
+          )}
+
+          {/* Group Items Bonus Modal */}
+          {selectedGroupForItems && (
+            <GroupItemsModal
+              visible={Boolean(selectedGroupForItems)}
+              groupNumber={selectedGroupForItems.group_number}
+              groupId={selectedGroupForItems.id}
+              groupName={selectedGroupForItems.name}
+              quizScore={selectedGroupForItems.quiz_score}
+              initialBookCount={selectedGroupForItems.book_count}
+              initialPenCount={selectedGroupForItems.pen_count}
+              initialPaperCount={selectedGroupForItems.paper_count}
+              initialBookPoints={selectedGroupForItems.book_points}
+              initialPenPoints={selectedGroupForItems.pen_points}
+              initialPaperPoints={selectedGroupForItems.paper_points}
+              initialBookName={selectedGroupForItems.book_name}
+              initialPenName={selectedGroupForItems.pen_name}
+              initialPaperName={selectedGroupForItems.paper_name}
+              isLocked={round.status === 'LOCKED'}
+              onSave={handleSaveGroupItems}
+              onClose={() => setSelectedGroupForItems(null)}
             />
           )}
         </View>
@@ -317,6 +438,71 @@ const styles = StyleSheet.create({
   groupCount: {
     fontSize: 12,
     color: COLORS.textSecondary,
+  },
+  groupTotalBadge: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    backgroundColor: COLORS.primaryContainer,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  groupTotalBadgeLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: COLORS.primary,
+    marginRight: 4,
+    textTransform: 'uppercase',
+  },
+  groupTotalBadgeValue: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
+  groupTotalBadgePts: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.primaryLight,
+    marginLeft: 2,
+  },
+  groupDetailFooter: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  groupDetailBreakdown: {
+    flex: 1,
+    marginRight: 8,
+  },
+  groupDetailBreakdownText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  groupDetailItemsSummary: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 1,
+  },
+  groupDetailItemsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight,
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    gap: 4,
+  },
+  groupDetailItemsBtnText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   emptyGroup: {
     fontSize: 13,

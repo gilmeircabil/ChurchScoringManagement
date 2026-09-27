@@ -10,21 +10,27 @@ import {
   Modal,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
+import * as DocumentPicker from 'expo-document-picker';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { DuplicateConfirmModal } from '../components/DuplicateConfirmModal';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
 import { SlideUp } from '../components/AnimatedComponents';
+import { SearchBar } from '../components/SearchBar';
+import { ExcelImportModal } from '../components/ExcelImportModal';
 import { PlayerDetailModal } from './PlayerDetailModal';
 import { getQuizService } from '../services/quizService';
 import { Player, PlayerWithStats, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 import { pluralize } from '../utils/formatters';
 import { validatePlayerName, validateScore } from '../utils/validation';
+import { ExcelParseResult, readUploadedSpreadsheet } from '../utils/excelImport';
+import { exportPlayersRosterToExcel } from '../utils/excelExport';
 
 interface PlayersScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -45,6 +51,96 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
 
   // Selected Player Details
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null);
+
+  // Excel Import State
+  const [excelParseResult, setExcelParseResult] = useState<ExcelParseResult | null>(null);
+  const [isImportModalVisible, setIsImportModalVisible] = useState(false);
+  const [isPickingFile, setIsPickingFile] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+
+  // Pick and parse Excel/CSV spreadsheet
+  const handlePickExcel = async () => {
+    setIsPickingFile(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: [
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'application/vnd.ms-excel',
+          'text/csv',
+          'text/comma-separated-values',
+          '*/*',
+        ],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        const parsed = await readUploadedSpreadsheet(file);
+        if (!parsed.success && parsed.validRows.length === 0) {
+          Alert.alert('Import Notice', parsed.error || 'No valid player rows found in spreadsheet.');
+          return;
+        }
+        setExcelParseResult(parsed);
+        setIsImportModalVisible(true);
+      }
+    } catch (err: any) {
+      console.error('File pick error:', err);
+      Alert.alert('File Selection Failed', err.message || 'Could not access file.');
+    } finally {
+      setIsPickingFile(false);
+    }
+  };
+
+  // Execute Batch Player Import
+  const handleConfirmExcelImport = async () => {
+    if (!excelParseResult || excelParseResult.validRows.length === 0) return;
+    try {
+      const service = await getQuizService();
+      const batchPayload = excelParseResult.validRows.map((r) => ({
+        name: r.name,
+        initialScore: r.initialScore,
+      }));
+      const res = await service.players.createPlayersBatch(batchPayload);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setIsImportModalVisible(false);
+      setExcelParseResult(null);
+      await loadPlayers('');
+      Alert.alert(
+        'Import Complete',
+        `Successfully imported ${res.createdCount} ${pluralize(res.createdCount, 'player')} into the quiz system!`
+      );
+    } catch (err: any) {
+      Alert.alert('Import Failed', err.message || 'Unable to import players.');
+    }
+  };
+
+  // Export Players Roster to Excel
+  const handleExportPlayersToExcel = async () => {
+    setIsExporting(true);
+    try {
+      const service = await getQuizService();
+      const allPlayers = await service.players.searchPlayersWithStats('', true);
+      if (allPlayers.length === 0) {
+        Alert.alert('No Players', 'There are no active players to export.');
+        return;
+      }
+      const res = await exportPlayersRosterToExcel(allPlayers);
+      if (res.success) {
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      } else if (res.error) {
+        Alert.alert('Export Error', res.error);
+      }
+    } catch (err: any) {
+      console.error('Player Excel export error:', err);
+      Alert.alert('Export Failed', err.message || 'Unable to export players to Excel.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const loadPlayers = useCallback(async (query = searchQuery) => {
     try {
@@ -116,38 +212,83 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
         onSettingsPress={onOpenSettings}
       />
 
-      {/* SEARCH AND ADD BAR */}
+      {/* SEARCH AND ACTION BAR */}
       <View style={styles.searchSection}>
-        <View style={styles.searchBox}>
-          <Ionicons name="search-outline" size={20} color={COLORS.textSecondary} style={{ marginRight: 8 }} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="🔍 Search player..."
-            placeholderTextColor={COLORS.textMuted}
+        <View style={styles.searchRow}>
+          <SearchBar
             value={searchQuery}
             onChangeText={handleSearchChange}
-            autoCapitalize="words"
+            placeholder="Search players..."
+            showMatchCount={false}
+            style={{ flex: 1 }}
           />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => handleSearchChange('')}>
-              <Ionicons name="close-circle" size={18} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          )}
+
+          <TouchableOpacity
+            style={styles.addPlayerButton}
+            onPress={() => {
+              setNewPlayerName('');
+              setNewPlayerScore('0');
+              setAddError(null);
+              setIsAddModalVisible(true);
+            }}
+            activeOpacity={0.8}
+            accessibilityLabel="Add new player"
+          >
+            <Ionicons name="person-add" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Text style={styles.addPlayerButtonText}>Add Player</Text>
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.addPlayerButton}
-          onPress={() => {
-            setNewPlayerName('');
-            setNewPlayerScore('0');
-            setAddError(null);
-            setIsAddModalVisible(true);
-          }}
-          activeOpacity={0.8}
-        >
-          <Ionicons name="person-add" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-          <Text style={styles.addPlayerButtonText}>Add Player</Text>
-        </TouchableOpacity>
+        {/* UTILITY ROW: FILTER STATUS OR ROSTER COUNT ON LEFT, EXCEL ACTIONS ON RIGHT */}
+        <View style={styles.utilityRow}>
+          <View style={styles.utilityLeft}>
+            {searchQuery.trim().length > 0 ? (
+              <View style={styles.filterStatsRow}>
+                <Text style={styles.filterStatsText} numberOfLines={1}>
+                  Found <Text style={{ fontWeight: '700', color: COLORS.primary }}>{players.length}</Text> {pluralize(players.length, 'player')}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => handleSearchChange('')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.clearSearchLink}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={styles.rosterCountText}>
+                {players.length} registered {pluralize(players.length, 'player')}
+              </Text>
+            )}
+          </View>
+
+          <View style={styles.excelActionsGroup}>
+            <TouchableOpacity
+              style={styles.excelActionButton}
+              onPress={handlePickExcel}
+              disabled={isPickingFile || isExporting}
+              activeOpacity={0.8}
+              accessibilityLabel="Import players from Excel"
+            >
+              <Ionicons name="cloud-upload-outline" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
+              <Text style={styles.excelActionButtonText}>
+                {isPickingFile ? '...' : 'Import'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.excelActionButton}
+              onPress={handleExportPlayersToExcel}
+              disabled={isPickingFile || isExporting || players.length === 0}
+              activeOpacity={0.8}
+              accessibilityLabel="Export players to Excel"
+            >
+              <Ionicons name="cloud-download-outline" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
+              <Text style={styles.excelActionButtonText}>
+                {isExporting ? '...' : 'Export'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </View>
 
       {/* PLAYERS LIST */}
@@ -335,6 +476,17 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
           loadPlayers();
         }}
       />
+
+      {/* EXCEL / CSV PLAYER IMPORT MODAL */}
+      <ExcelImportModal
+        visible={isImportModalVisible}
+        parseResult={excelParseResult}
+        onConfirmImport={handleConfirmExcelImport}
+        onClose={() => {
+          setIsImportModalVisible(false);
+          setExcelParseResult(null);
+        }}
+      />
     </View>
   );
 };
@@ -345,40 +497,93 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   searchSection: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 12,
     paddingBottom: 8,
-    gap: 10,
+    gap: 8,
   },
-  searchBox: {
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  utilityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2,
+    paddingTop: 2,
+  },
+  utilityLeft: {
+    flex: 1,
+    marginRight: 8,
+  },
+  rosterCountText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  excelActionsGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  excelActionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
     elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 1,
   },
-  searchInput: {
-    flex: 1,
-    fontSize: 15,
-    color: COLORS.textPrimary,
-    padding: 0,
+  excelActionButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
   addPlayerButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primary,
-    paddingVertical: 12,
-    borderRadius: 10,
+    paddingHorizontal: 12,
+    minHeight: 46,
+    borderRadius: 14,
+    flexShrink: 0,
     elevation: 2,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   addPlayerButtonText: {
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  filterStatsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+  },
+  filterStatsText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    fontWeight: '500',
+  },
+  clearSearchLink: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   loaderContainer: {
     flex: 1,

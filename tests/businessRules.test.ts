@@ -3,6 +3,16 @@ import { SqlJsTestConnection } from './testDbAdapter';
 import { QuizService, createQuizServiceWithDb } from '../src/services/quizService';
 import { formatPlayerIdentifier } from '../src/utils/formatters';
 import { validatePlayerName, validateScore, validateGroupCount } from '../src/utils/validation';
+import { parseExcelOrCsv } from '../src/utils/excelImport';
+import {
+  buildPlayersWorkbook,
+  buildReportWorkbook,
+  buildDatabaseBackupWorkbook,
+  exportPlayersRosterToExcel,
+  exportReportToExcel,
+  exportDatabaseBackupToExcel,
+} from '../src/utils/excelExport';
+import * as XLSX from 'xlsx';
 
 describe('Quiz Score Manager — Business Rules and Scenarios', () => {
   let service: QuizService;
@@ -490,5 +500,460 @@ describe('Quiz Score Manager — Business Rules and Scenarios', () => {
       total_score: 20,
       rounds_played: 0,
     });
+  });
+
+  // TEST 18 — Group Items Carry Rules (Book, Pen, Paper) Auto Total & Group Score
+  test('Test 18 — Auto total book, pen, and paper carry bonus and add into group score', async () => {
+    const round = await service.rounds.createRound('2026-09-27', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const john = await service.players.createPlayer('John');
+    const sara = await service.players.createPlayer('Sara');
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const group1 = groups.find((g) => g.group_number === 1)!;
+
+    await service.groups.assignPlayerToGroup(round.id, group1.id, john.id);
+    await service.groups.assignPlayerToGroup(round.id, group1.id, sara.id);
+
+    // Enter quiz scores for players
+    await service.scores.saveScore(round.id, john.id, 25);
+    await service.scores.saveScore(round.id, sara.id, 15);
+
+    // Group quiz subtotal = 25 + 15 = 40
+    let details = await service.groups.getGroupDetails(round.id);
+    let g1Detail = details.find((d) => d.id === group1.id)!;
+    expect(g1Detail.quiz_score).toBe(40);
+    expect(g1Detail.items_bonus).toBe(0);
+    expect(g1Detail.total_score).toBe(40);
+
+    // Now scoring round is finish: add carried items
+    // Group 1 carried: 3 books (10 pts each), 2 pens (5 pts each), 4 papers (5 pts each)
+    await service.groups.updateGroupItems(group1.id, {
+      book_count: 3,
+      pen_count: 2,
+      paper_count: 4,
+    });
+
+    details = await service.groups.getGroupDetails(round.id);
+    g1Detail = details.find((d) => d.id === group1.id)!;
+
+    // Auto total items: 3*10 + 2*5 + 4*5 = 30 + 10 + 20 = 60
+    expect(g1Detail.book_count).toBe(3);
+    expect(g1Detail.pen_count).toBe(2);
+    expect(g1Detail.paper_count).toBe(4);
+    expect(g1Detail.items_bonus).toBe(60);
+
+    // Group Total Score = Quiz (40) + Items Bonus (60) = 100
+    expect(g1Detail.total_score).toBe(100);
+  });
+
+  // TEST 19 — Make Editable Points of Things
+  test('Test 19 — Editable points of things (book, pen, paper) auto totals accurately', async () => {
+    const round = await service.rounds.createRound('2026-09-27', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const group1 = groups.find((g) => g.group_number === 1)!;
+
+    // Custom points: Book = 15 pts, Pen = 10 pts, Paper = 2 pts
+    await service.groups.updateGroupItems(group1.id, {
+      book_count: 4, // 4 * 15 = 60
+      pen_count: 3,  // 3 * 10 = 30
+      paper_count: 5,// 5 * 2  = 10
+      book_points: 15,
+      pen_points: 10,
+      paper_points: 2,
+    });
+
+    const details = await service.groups.getGroupDetails(round.id);
+    const g1Detail = details.find((d) => d.id === group1.id)!;
+
+    expect(g1Detail.book_points).toBe(15);
+    expect(g1Detail.pen_points).toBe(10);
+    expect(g1Detail.paper_points).toBe(2);
+    // Auto total = 60 + 30 + 10 = 100
+    expect(g1Detail.items_bonus).toBe(100);
+    expect(g1Detail.total_score).toBe(100);
+  });
+
+  // TEST 20 — Update round item points across all groups in round
+  test('Test 20 — updateRoundItemPoints applies custom points across all groups in round', async () => {
+    const round = await service.rounds.createRound('2026-09-27', 3);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    // Change round rules: Book = 20 pts, Pen = 8 pts, Paper = 3 pts
+    await service.groups.updateRoundItemPoints(round.id, {
+      book_points: 20,
+      pen_points: 8,
+      paper_points: 3,
+    });
+
+    const details = await service.groups.getGroupDetails(round.id);
+    for (const g of details) {
+      expect(g.book_points).toBe(20);
+      expect(g.pen_points).toBe(8);
+      expect(g.paper_points).toBe(3);
+    }
+  });
+
+  // TEST 21 — Group Leaderboard Report (Highest to Lowest)
+  test('Test 21 — By Group report ranks groups by total score descending with items carry', async () => {
+    const round = await service.rounds.createRound('2026-09-27', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const p1 = await service.players.createPlayer('Player 1');
+    const p2 = await service.players.createPlayer('Player 2');
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const g1 = groups.find((g) => g.group_number === 1)!;
+    const g2 = groups.find((g) => g.group_number === 2)!;
+
+    await service.groups.assignPlayerToGroup(round.id, g1.id, p1.id);
+    await service.groups.assignPlayerToGroup(round.id, g2.id, p2.id);
+
+    // Group 1: 50 quiz pts + 10 items (1 book) = 60 pts
+    await service.scores.saveScore(round.id, p1.id, 50);
+    await service.groups.updateGroupItems(g1.id, {
+      book_count: 1,
+      pen_count: 0,
+      paper_count: 0,
+    });
+
+    // Group 2: 20 quiz pts + 60 items (4 books = 40, 4 pens = 20) = 80 pts
+    await service.scores.saveScore(round.id, p2.id, 20);
+    await service.groups.updateGroupItems(g2.id, {
+      book_count: 4,
+      pen_count: 4,
+      paper_count: 0,
+    });
+
+    const report = await service.reports.getGroupReport(round.id);
+    expect(report).toHaveLength(2);
+
+    // Group 2 has 80 pts -> Rank 1
+    expect(report[0].group_number).toBe(2);
+    expect(report[0].total_score).toBe(80);
+    expect(report[0].rank).toBe(1);
+
+    // Group 1 has 60 pts -> Rank 2
+    expect(report[1].group_number).toBe(1);
+    expect(report[1].total_score).toBe(60);
+    expect(report[1].rank).toBe(2);
+  });
+
+  // TEST 22 — Locked Round Item Protection
+  test('Test 22 — Locked round rejects modifying group items until unlocked', async () => {
+    const round = await service.rounds.createRound('2026-09-27', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const g1 = groups[0];
+
+    await service.rounds.updateRoundStatus(round.id, 'LOCKED');
+
+    await expect(
+      service.groups.updateGroupItems(g1.id, {
+        book_count: 2,
+        pen_count: 1,
+        paper_count: 1,
+      })
+    ).rejects.toThrow(/locked/i);
+
+    // Unlocking allows updates
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+    await service.groups.updateGroupItems(g1.id, {
+      book_count: 2,
+      pen_count: 1,
+      paper_count: 1,
+    });
+
+    const details = await service.groups.getGroupDetails(round.id);
+    expect(details[0].book_count).toBe(2);
+  });
+
+  // TEST 23 — Custom Item Names & Custom Group Name
+  test('Test 23 — Edit item names (e.g. Bible, Pen, Notebook) and custom group name with auto-total', async () => {
+    const round = await service.rounds.createRound('2026-09-27', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const p1 = await service.players.createPlayer('Alice');
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const g1 = groups[0];
+
+    await service.groups.assignPlayerToGroup(round.id, g1.id, p1.id);
+    await service.scores.saveScore(round.id, p1.id, 40); // 40 quiz pts
+
+    // Rename items and set group name
+    await service.groups.updateGroupItems(g1.id, {
+      name: 'Team David',
+      book_name: 'Bible',
+      pen_name: 'Blue Pen',
+      paper_name: 'Notebook',
+      book_points: 15,
+      pen_points: 5,
+      paper_points: 10,
+      book_count: 2,   // 2 * 15 = 30
+      pen_count: 3,    // 3 * 5 = 15
+      paper_count: 1,  // 1 * 10 = 10 -> items bonus = 55
+    });
+
+    const details = await service.groups.getGroupDetails(round.id);
+    const g1Detail = details.find((d) => d.id === g1.id)!;
+
+    expect(g1Detail.name).toBe('Team David');
+    expect(g1Detail.book_name).toBe('Bible');
+    expect(g1Detail.pen_name).toBe('Blue Pen');
+    expect(g1Detail.paper_name).toBe('Notebook');
+    expect(g1Detail.quiz_score).toBe(40);
+    expect(g1Detail.items_bonus).toBe(55);
+    expect(g1Detail.total_score).toBe(95);
+
+    // Verify report includes the custom group name and item names
+    const report = await service.reports.getGroupReport(round.id);
+    const g1Report = report.find((r) => r.group_id === g1.id)!;
+    expect(g1Report.name).toBe('Team David');
+    expect(g1Report.book_name).toBe('Bible');
+    expect(g1Report.pen_name).toBe('Blue Pen');
+    expect(g1Report.paper_name).toBe('Notebook');
+    expect(g1Report.total_score).toBe(95);
+  });
+
+  // TEST 24 — Bulk update item rules across all groups in round
+  test('Test 24 — updateRoundItemRules applies customized item names and points to all groups', async () => {
+    const round = await service.rounds.createRound('2026-09-27', 3);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    await service.groups.updateRoundItemRules(round.id, {
+      book_name: 'Scripture',
+      pen_name: 'Marker',
+      paper_name: 'Pad',
+      book_points: 25,
+      pen_points: 8,
+      paper_points: 4,
+    });
+
+    const details = await service.groups.getGroupDetails(round.id);
+    expect(details).toHaveLength(3);
+    for (const g of details) {
+      expect(g.book_name).toBe('Scripture');
+      expect(g.pen_name).toBe('Marker');
+      expect(g.paper_name).toBe('Pad');
+      expect(g.book_points).toBe(25);
+      expect(g.pen_points).toBe(8);
+      expect(g.paper_points).toBe(4);
+    }
+  });
+
+  // TEST 25 — Parse Excel/CSV player roster and batch import players with initial scores
+  test('Test 25 — Parse Excel/CSV player roster and batch import players with initial scores', async () => {
+    // Generate an in-memory workbook with Name and Initial Score headers
+    const wb = XLSX.utils.book_new();
+    const wsData = [
+      ['Name', 'Initial Score'],
+      ['Abraham', 50],
+      ['Sarah', 30],
+      ['Isaac', 15],
+      ['Jacob', 0],
+      ['', 10], // Invalid empty name row (should be skipped)
+      ['Joseph', '25 pts'], // String with points units (should parse 25)
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(wb, ws, 'Roster');
+    const base64 = XLSX.write(wb, { type: 'base64', bookType: 'xlsx' });
+
+    const parseResult = parseExcelOrCsv(base64, 'roster.xlsx', 'base64');
+    expect(parseResult.success).toBe(true);
+    expect(parseResult.validRows).toHaveLength(5);
+    expect(parseResult.invalidRows).toHaveLength(1); // the empty name row
+
+    expect(parseResult.validRows[0]).toMatchObject({ name: 'Abraham', initialScore: 50 });
+    expect(parseResult.validRows[1]).toMatchObject({ name: 'Sarah', initialScore: 30 });
+    expect(parseResult.validRows[2]).toMatchObject({ name: 'Isaac', initialScore: 15 });
+    expect(parseResult.validRows[3]).toMatchObject({ name: 'Jacob', initialScore: 0 });
+    expect(parseResult.validRows[4]).toMatchObject({ name: 'Joseph', initialScore: 25 });
+
+    // Batch create into database
+    const batchResult = await service.players.createPlayersBatch(
+      parseResult.validRows.map((r) => ({ name: r.name, initialScore: r.initialScore }))
+    );
+
+    expect(batchResult.createdCount).toBe(5);
+    expect(batchResult.players[0].name).toBe('Abraham');
+    expect(batchResult.players[0].player_number).toBe(1);
+    expect(batchResult.players[0].initial_score).toBe(50);
+
+    expect(batchResult.players[4].name).toBe('Joseph');
+    expect(batchResult.players[4].player_number).toBe(5);
+    expect(batchResult.players[4].initial_score).toBe(25);
+
+    // Verify stats & total score reflect initial scores
+    const abrahamStats = await service.players.getPlayerWithStats(batchResult.players[0].id);
+    expect(abrahamStats?.total_score).toBe(50);
+  });
+
+  // TEST 26 — Batch player creation assigns sequential numbers and preserves initial scores
+  test('Test 26 — Batch player creation assigns sequential numbers following existing players', async () => {
+    // Add existing player first (#001)
+    const existing = await service.players.createPlayer('Moses', 10);
+    expect(existing.player_number).toBe(1);
+
+    // Batch insert 2 new players (#002, #003)
+    const batch = await service.players.createPlayersBatch([
+      { name: 'Aaron', initialScore: 20 },
+      { name: 'Miriam', initialScore: 15 },
+    ]);
+
+    expect(batch.createdCount).toBe(2);
+    expect(batch.players[0].player_number).toBe(2);
+    expect(batch.players[0].name).toBe('Aaron');
+    expect(batch.players[0].initial_score).toBe(20);
+
+    expect(batch.players[1].player_number).toBe(3);
+    expect(batch.players[1].name).toBe('Miriam');
+    expect(batch.players[1].initial_score).toBe(15);
+
+    const all = await service.players.getAllPlayers();
+    expect(all).toHaveLength(3);
+  });
+
+  // TEST 27 — Export player roster to Excel (.xlsx) workbook
+  test('Test 27 — Export player roster to Excel (.xlsx) workbook with correct headers and player stats', async () => {
+    // Setup players
+    const p1 = await service.players.createPlayer('Elijah', 25);
+    const p2 = await service.players.createPlayer('Elisha', 15);
+
+    const playersWithStats = await service.players.searchPlayersWithStats('', true);
+    expect(playersWithStats).toHaveLength(2);
+
+    // Build workbook
+    const wb = buildPlayersWorkbook(playersWithStats);
+    expect(wb.SheetNames).toContain('Players Roster');
+
+    const ws = wb.Sheets['Players Roster'];
+    const sheetData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+    // Verify Headers
+    expect(sheetData[0]).toEqual([
+      'Player ID',
+      'Name',
+      'Initial Score',
+      'Total Score',
+      'Rounds Played',
+      'Status',
+    ]);
+
+    // Verify Rows
+    expect(sheetData[1]).toEqual(['#001', 'Elijah', 25, 25, 0, 'Active']);
+    expect(sheetData[2]).toEqual(['#002', 'Elisha', 15, 15, 0, 'Active']);
+
+    // Verify export caller executes without throwing
+    const res = await exportPlayersRosterToExcel(playersWithStats);
+    expect(res.success).toBe(true);
+  });
+
+  // TEST 28 — Export scoring reports to multi-sheet Excel (.xlsx) workbook
+  test('Test 28 — Export scoring reports to multi-sheet Excel (.xlsx) workbook with group rules & bonuses', async () => {
+    const round = await service.rounds.createRound('2026-09-27', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const p1 = await service.players.createPlayer('Peter', 0);
+    const p2 = await service.players.createPlayer('Paul', 0);
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    await service.groups.assignPlayerToGroup(round.id, groups[0].id, p1.id);
+    await service.groups.assignPlayerToGroup(round.id, groups[1].id, p2.id);
+
+    // Scores
+    await service.scores.saveScore(round.id, p1.id, 40);
+    await service.scores.saveScore(round.id, p2.id, 50);
+
+    // Group items: Group 1 has 3 books (30 pts), 2 pens (10 pts) -> 40 bonus
+    await service.groups.updateGroupItems(groups[0].id, {
+      book_count: 3,
+      pen_count: 2,
+      paper_count: 1,
+      book_points: 10,
+      pen_points: 5,
+      paper_points: 5,
+    });
+
+    const overallReport = await service.reports.getOverallReport();
+    const groupReport = await service.reports.getGroupReport(round.id);
+    const roundReport = await service.reports.getRoundReport(round.id);
+
+    // Build workbook
+    const wb = buildReportWorkbook({
+      filter: 'overall',
+      roundName: 'Round 1 (2026-09-27)',
+      overallItems: overallReport,
+      groupItems: groupReport,
+      roundItems: roundReport,
+    });
+
+    expect(wb.SheetNames).toContain('Overall Leaderboard');
+    expect(wb.SheetNames).toContain('Group Standings');
+    expect(wb.SheetNames).toContain('Round Scores');
+
+    // Verify Overall Leaderboard
+    const wsOverall = wb.Sheets['Overall Leaderboard'];
+    const overallData: any[][] = XLSX.utils.sheet_to_json(wsOverall, { header: 1 });
+    expect(overallData[0]).toEqual(['Rank', 'Player ID', 'Player Name', 'Total Score', 'Rounds Played']);
+    // Paul has 50, Peter has 40
+    expect(overallData[1]).toEqual([1, '#002', 'Paul', 50, 1]);
+    expect(overallData[2]).toEqual([2, '#001', 'Peter', 40, 1]);
+
+    // Verify Group Standings with items bonus carry
+    const wsGroup = wb.Sheets['Group Standings'];
+    const groupData: any[][] = XLSX.utils.sheet_to_json(wsGroup, { header: 1 });
+    expect(groupData[0]).toEqual([
+      'Rank',
+      'Group Name',
+      'Members Count',
+      'Quiz Score',
+      'Items Bonus (Carry)',
+      'Total Group Score',
+    ]);
+    // Group 1: Quiz = 40, Items Bonus = 30 + 10 + 5 = 45, Total = 85
+    // Group 2: Quiz = 50, Items Bonus = 0, Total = 50
+    // Group 1 is Rank 1 with 85 total!
+    expect(groupData[1][0]).toBe(1);
+    expect(groupData[1][1]).toContain('Group 1');
+    expect(groupData[1][4]).toBe(45);
+    expect(groupData[1][5]).toBe(85);
+
+    // Verify export caller executes without throwing
+    const res = await exportReportToExcel({
+      filter: 'overall',
+      overallItems: overallReport,
+      groupItems: groupReport,
+      roundItems: roundReport,
+    });
+    expect(res.success).toBe(true);
+  });
+
+  // TEST 29 — Export full database backup into multi-sheet Excel (.xlsx) workbook
+  test('Test 29 — Export full database backup into multi-sheet Excel workbook with all 4 core tables', async () => {
+    // Generate backup
+    const backupData = await service.backup.generateBackupData();
+    const wb = buildDatabaseBackupWorkbook(backupData);
+
+    expect(wb.SheetNames).toEqual(['Players', 'Rounds', 'Groups', 'Scores']);
+
+    const wsPlayers = wb.Sheets['Players'];
+    const playersData: any[][] = XLSX.utils.sheet_to_json(wsPlayers, { header: 1 });
+    expect(playersData[0]).toEqual(['ID', 'Player #', 'Name', 'Initial Score', 'Active', 'Created At']);
+
+    const wsRounds = wb.Sheets['Rounds'];
+    const roundsData: any[][] = XLSX.utils.sheet_to_json(wsRounds, { header: 1 });
+    expect(roundsData[0]).toEqual(['ID', 'Round Date', 'Status', 'Group Count', 'Created At']);
+
+    const wsGroups = wb.Sheets['Groups'];
+    const groupsData: any[][] = XLSX.utils.sheet_to_json(wsGroups, { header: 1 });
+    expect(groupsData[0]).toContain('Book Carry');
+    expect(groupsData[0]).toContain('Pen Carry');
+
+    const res = await exportDatabaseBackupToExcel(backupData);
+    expect(res.success).toBe(true);
   });
 });

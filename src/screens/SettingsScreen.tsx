@@ -23,6 +23,8 @@ import { getQuizService } from '../services/quizService';
 import { COLORS } from '../constants/colors';
 import { APP_CONFIG } from '../constants/config';
 import { BackupData } from '../types';
+import { getDefaultItemRules, saveDefaultItemRules } from '../utils/itemPointsStorage';
+import { exportDatabaseBackupToExcel } from '../utils/excelExport';
 
 interface SettingsScreenProps {
   onBack: () => void;
@@ -31,6 +33,50 @@ interface SettingsScreenProps {
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<StatusMessage>(null);
+
+  // Default Item Rules state (Names & Points)
+  const [defaultBookName, setDefaultBookName] = useState('Book');
+  const [defaultBookPts, setDefaultBookPts] = useState('10');
+  const [defaultPenName, setDefaultPenName] = useState('Pen');
+  const [defaultPenPts, setDefaultPenPts] = useState('5');
+  const [defaultPaperName, setDefaultPaperName] = useState('Paper');
+  const [defaultPaperPts, setDefaultPaperPts] = useState('5');
+
+  React.useEffect(() => {
+    getDefaultItemRules().then((rules) => {
+      setDefaultBookName(rules.book_name || 'Book');
+      setDefaultBookPts(String(rules.book_points));
+      setDefaultPenName(rules.pen_name || 'Pen');
+      setDefaultPenPts(String(rules.pen_points));
+      setDefaultPaperName(rules.paper_name || 'Paper');
+      setDefaultPaperPts(String(rules.paper_points));
+    });
+  }, []);
+
+  const handleSaveItemRules = async () => {
+    const bName = defaultBookName.trim() || 'Book';
+    const bPts = Math.max(0, parseInt(defaultBookPts, 10) || 0);
+    const pName = defaultPenName.trim() || 'Pen';
+    const pPts = Math.max(0, parseInt(defaultPenPts, 10) || 0);
+    const paName = defaultPaperName.trim() || 'Paper';
+    const paPts = Math.max(0, parseInt(defaultPaperPts, 10) || 0);
+
+    await saveDefaultItemRules({
+      book_name: bName,
+      book_points: bPts,
+      pen_name: pName,
+      pen_points: pPts,
+      paper_name: paName,
+      paper_points: paPts,
+    });
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+    setStatusMessage({
+      type: 'success',
+      text: `Default item rules saved! ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts).`,
+    });
+  };
 
   // Raw JSON modal state
   const [isRawJsonModalVisible, setIsRawJsonModalVisible] = useState(false);
@@ -95,6 +141,42 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
       setStatusMessage({
         type: 'error',
         text: err.message || 'Failed to export backup.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Export All Data to Excel (.xlsx)
+  const handleExportExcelBackup = async () => {
+    setLoading(true);
+    setStatusMessage(null);
+    try {
+      const service = await getQuizService();
+      const backupData = await service.backup.generateBackupData();
+      const res = await exportDatabaseBackupToExcel(backupData);
+      if (res.success) {
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+        setStatusMessage({
+          type: 'success',
+          text:
+            Platform.OS === 'web'
+              ? 'Excel database backup downloaded successfully!'
+              : 'Excel backup generated! Share sheet opened.',
+        });
+      } else if (res.error) {
+        setStatusMessage({
+          type: 'error',
+          text: res.error,
+        });
+      }
+    } catch (err: any) {
+      console.error('Excel backup error:', err);
+      setStatusMessage({
+        type: 'error',
+        text: err.message || 'Failed to export Excel backup.',
       });
     } finally {
       setLoading(false);
@@ -225,22 +307,31 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
           <View style={styles.buttonRow}>
             <TouchableOpacity
               style={styles.primaryButton}
-              onPress={handleExportBackup}
+              onPress={handleExportExcelBackup}
               disabled={loading}
             >
-              <Ionicons name="share-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.primaryButtonText}>Export Backup</Text>
+              <Ionicons name="document-text-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.primaryButtonText}>Export Excel</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.secondaryButton}
-              onPress={handleViewRawJson}
+              onPress={handleExportBackup}
               disabled={loading}
             >
-              <Ionicons name="code-slash-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.secondaryButtonText}>View JSON</Text>
+              <Ionicons name="share-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.secondaryButtonText}>JSON Backup</Text>
             </TouchableOpacity>
           </View>
+
+          <TouchableOpacity
+            style={[styles.textLinkButton, { marginTop: 10, alignSelf: 'center' }]}
+            onPress={handleViewRawJson}
+            disabled={loading}
+          >
+            <Ionicons name="code-slash-outline" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
+            <Text style={styles.textLinkButtonText}>View Raw JSON</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={[styles.card, { marginTop: 14 }]}>
@@ -296,6 +387,109 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
               {APP_CONFIG.developer}
             </Text>
           </View>
+        </View>
+
+        {/* ITEM BONUS RULES SECTION */}
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>ITEM BONUS RULES (DEFAULT NAMES & POINTS)</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Default Item Names & Carry Points</Text>
+          <Text style={styles.cardDescription}>
+            Customize the default item names (e.g. Book/Bible, Pen, Paper/Notebook) and point values used when creating new rounds.
+          </Text>
+
+          <View style={styles.rulesStack}>
+            {/* Item 1 */}
+            <View style={styles.ruleCardSetting}>
+              <Text style={styles.ruleCardLabel}>📖 Item 1 (Default: Book)</Text>
+              <View style={styles.ruleInputGroup}>
+                <View style={{ flex: 1.6, marginRight: 8 }}>
+                  <Text style={styles.ruleMiniLabel}>Item Name</Text>
+                  <TextInput
+                    style={styles.ruleNameInput}
+                    value={defaultBookName}
+                    onChangeText={setDefaultBookName}
+                    placeholder="Book"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ruleMiniLabel}>Points Each</Text>
+                  <TextInput
+                    style={styles.itemRuleInput}
+                    value={defaultBookPts}
+                    onChangeText={setDefaultBookPts}
+                    keyboardType="number-pad"
+                    placeholder="10"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Item 2 */}
+            <View style={styles.ruleCardSetting}>
+              <Text style={styles.ruleCardLabel}>🖊️ Item 2 (Default: Pen)</Text>
+              <View style={styles.ruleInputGroup}>
+                <View style={{ flex: 1.6, marginRight: 8 }}>
+                  <Text style={styles.ruleMiniLabel}>Item Name</Text>
+                  <TextInput
+                    style={styles.ruleNameInput}
+                    value={defaultPenName}
+                    onChangeText={setDefaultPenName}
+                    placeholder="Pen"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ruleMiniLabel}>Points Each</Text>
+                  <TextInput
+                    style={styles.itemRuleInput}
+                    value={defaultPenPts}
+                    onChangeText={setDefaultPenPts}
+                    keyboardType="number-pad"
+                    placeholder="5"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Item 3 */}
+            <View style={styles.ruleCardSetting}>
+              <Text style={styles.ruleCardLabel}>📄 Item 3 (Default: Paper)</Text>
+              <View style={styles.ruleInputGroup}>
+                <View style={{ flex: 1.6, marginRight: 8 }}>
+                  <Text style={styles.ruleMiniLabel}>Item Name</Text>
+                  <TextInput
+                    style={styles.ruleNameInput}
+                    value={defaultPaperName}
+                    onChangeText={setDefaultPaperName}
+                    placeholder="Paper"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ruleMiniLabel}>Points Each</Text>
+                  <TextInput
+                    style={styles.itemRuleInput}
+                    value={defaultPaperPts}
+                    onChangeText={setDefaultPaperPts}
+                    keyboardType="number-pad"
+                    placeholder="5"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.primaryButton, { marginTop: 14 }]}
+            onPress={handleSaveItemRules}
+          >
+            <Ionicons name="save-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Text style={styles.primaryButtonText}>Save Default Item Rules</Text>
+          </TouchableOpacity>
         </View>
 
         {/* DANGER ZONE SECTION */}
@@ -504,6 +698,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
+  textLinkButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  textLinkButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.primary,
+  },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -522,6 +727,71 @@ const styles = StyleSheet.create({
   infoDivider: {
     height: 1,
     backgroundColor: COLORS.border,
+  },
+  rulesStack: {
+    gap: 10,
+    marginTop: 6,
+  },
+  ruleCardSetting: {
+    backgroundColor: COLORS.surfaceVariant,
+    borderRadius: 10,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+  },
+  ruleCardLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    marginBottom: 6,
+  },
+  ruleInputGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ruleMiniLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    marginBottom: 3,
+    textTransform: 'uppercase',
+  },
+  ruleNameInput: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+  },
+  itemRulesRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 6,
+  },
+  itemRuleField: {
+    flex: 1,
+  },
+  itemRuleLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textPrimary,
+    marginBottom: 4,
+  },
+  itemRuleInput: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
   },
   dangerButton: {
     flexDirection: 'row',

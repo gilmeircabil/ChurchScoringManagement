@@ -23,6 +23,16 @@ export interface Group {
   id: string;
   round_id: string;
   group_number: number;
+  name?: string | null;
+  book_count?: number;
+  pen_count?: number;
+  paper_count?: number;
+  book_points?: number;
+  pen_points?: number;
+  paper_points?: number;
+  book_name?: string;
+  pen_name?: string;
+  paper_name?: string;
 }
 
 export interface GroupMember {
@@ -72,7 +82,56 @@ export interface AssignedMember {
 export interface GroupDetail {
   id: string;
   group_number: number;
+  name?: string | null;
   members: AssignedMember[];
+  book_count: number;
+  pen_count: number;
+  paper_count: number;
+  book_points: number;
+  pen_points: number;
+  paper_points: number;
+  book_name: string;
+  pen_name: string;
+  paper_name: string;
+  quiz_score: number;
+  items_bonus: number;
+  total_score: number;
+}
+
+export interface ItemPointsConfig {
+  book: number;
+  pen: number;
+  paper: number;
+}
+
+export interface ItemRuleConfig {
+  book_name: string;
+  book_points: number;
+  pen_name: string;
+  pen_points: number;
+  paper_name: string;
+  paper_points: number;
+}
+
+export interface GroupReportItem {
+  rank: number;
+  group_id: string;
+  group_number: number;
+  name?: string | null;
+  member_count: number;
+  member_names: string[];
+  quiz_score: number;
+  book_count: number;
+  pen_count: number;
+  paper_count: number;
+  book_points: number;
+  pen_points: number;
+  paper_points: number;
+  book_name: string;
+  pen_name: string;
+  paper_name: string;
+  items_bonus: number;
+  total_score: number;
 }
 
 export interface ReportItem {

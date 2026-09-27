@@ -1,5 +1,5 @@
 import { IDatabaseConnection } from '../database/types';
-import { Round, RoundStatus, RoundHistoryItem } from '../types';
+import { Round, RoundStatus, RoundHistoryItem, ItemPointsConfig, ItemRuleConfig } from '../types';
 import { generateId } from '../utils/idGenerator';
 
 export class RoundRepository {
@@ -9,9 +9,19 @@ export class RoundRepository {
     this.db = db;
   }
 
-  async createRound(roundDate: string, groupCount: number): Promise<Round> {
+  async createRound(
+    roundDate: string,
+    groupCount: number,
+    defaultRules?: Partial<ItemRuleConfig> & Partial<ItemPointsConfig>
+  ): Promise<Round> {
     const roundId = generateId();
     const now = new Date().toISOString();
+    const bookName = defaultRules?.book_name || 'Book';
+    const penName = defaultRules?.pen_name || 'Pen';
+    const paperName = defaultRules?.paper_name || 'Paper';
+    const bookPts = defaultRules?.book_points ?? (defaultRules as any)?.book ?? 10;
+    const penPts = defaultRules?.pen_points ?? (defaultRules as any)?.pen ?? 5;
+    const paperPts = defaultRules?.paper_points ?? (defaultRules as any)?.paper ?? 5;
 
     return await this.db.withTransactionAsync(async () => {
       await this.db.runAsync(
@@ -27,10 +37,16 @@ export class RoundRepository {
       for (let i = 1; i <= groupCount; i++) {
         const groupId = generateId();
         await this.db.runAsync(
-          'INSERT INTO groups (id, round_id, group_number) VALUES (?, ?, ?)',
+          'INSERT INTO groups (id, round_id, group_number, book_count, pen_count, paper_count, book_points, pen_points, paper_points, book_name, pen_name, paper_name) VALUES (?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, ?)',
           groupId,
           roundId,
-          i
+          i,
+          bookPts,
+          penPts,
+          paperPts,
+          bookName,
+          penName,
+          paperName
         );
       }
 

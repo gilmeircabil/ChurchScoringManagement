@@ -7,28 +7,34 @@ import {
   StyleSheet,
   ActivityIndicator,
   ScrollView,
+  Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
 import { SlideUp } from '../components/AnimatedComponents';
 import { getQuizService } from '../services/quizService';
-import { ReportItem, Round, MainTab } from '../types';
+import { ReportItem, GroupReportItem, Round, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
-import { formatDateDisplay } from '../utils/formatters';
+import { formatDateDisplay, pluralize } from '../utils/formatters';
+import { exportReportToExcel } from '../utils/excelExport';
 
 interface ReportsScreenProps {
   onNavigate: (tab: MainTab) => void;
   onOpenSettings: () => void;
 }
 
-type ReportFilter = 'overall' | 'by_round';
+type ReportFilter = 'overall' | 'by_round' | 'by_group';
 
 export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpenSettings }) => {
   const [filter, setFilter] = useState<ReportFilter>('overall');
   const [loading, setLoading] = useState(true);
   const [reportItems, setReportItems] = useState<ReportItem[]>([]);
+  const [groupReportItems, setGroupReportItems] = useState<GroupReportItem[]>([]);
+  const [isExporting, setIsExporting] = useState(false);
 
   // Round selector for By Round filter
   const [allRounds, setAllRounds] = useState<Round[]>([]);
@@ -63,6 +69,13 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
         } else {
           setReportItems([]);
         }
+      } else if (filter === 'by_group') {
+        if (selectedRoundId) {
+          const data = await service.reports.getGroupReport(selectedRoundId);
+          setGroupReportItems(data);
+        } else {
+          setGroupReportItems([]);
+        }
       }
     } catch (err) {
       console.error('Failed to load report data:', err);
@@ -85,14 +98,59 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
 
   const getScoreLabel = () => {
     if (filter === 'overall') return 'Overall Total Points';
-    return 'Round Score';
+    if (filter === 'by_round') return 'Round Score';
+    return 'Group Total Score (Quiz + Items Bonus)';
+  };
+
+  const getSubtitle = () => {
+    if (filter === 'by_group') return 'Group Leaderboard & Rules';
+    return 'Individual Player Rankings';
+  };
+
+  const handleExportReport = async () => {
+    setIsExporting(true);
+    try {
+      const service = await getQuizService();
+      const overall = await service.reports.getOverallReport();
+      const currentRound = allRounds.find((r) => r.id === selectedRoundId);
+      const roundName = currentRound ? formatDateDisplay(currentRound.round_date) : undefined;
+
+      let groupItems: GroupReportItem[] = [];
+      let roundItems: ReportItem[] = [];
+
+      if (selectedRoundId) {
+        groupItems = await service.reports.getGroupReport(selectedRoundId);
+        roundItems = await service.reports.getRoundReport(selectedRoundId);
+      }
+
+      const res = await exportReportToExcel({
+        filter,
+        roundName,
+        overallItems: overall,
+        groupItems: groupItems.length > 0 ? groupItems : groupReportItems,
+        roundItems: roundItems.length > 0 ? roundItems : (filter === 'by_round' ? reportItems : undefined),
+      });
+
+      if (res.success) {
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
+      } else if (res.error) {
+        Alert.alert('Export Error', res.error);
+      }
+    } catch (err: any) {
+      console.error('Report Excel export error:', err);
+      Alert.alert('Export Failed', err.message || 'Unable to export report to Excel.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
     <View style={styles.container}>
       <Header
         title="Reports"
-        subtitle="Individual Player Rankings"
+        subtitle={getSubtitle()}
         onSettingsPress={onOpenSettings}
       />
 
@@ -115,10 +173,19 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
             By Round
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterTab, filter === 'by_group' && styles.filterTabActive]}
+          onPress={() => setFilter('by_group')}
+        >
+          <Text style={[styles.filterTabText, filter === 'by_group' && styles.filterTabTextActive]}>
+            By Group
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* SECONDARY SELECTOR FOR BY ROUND */}
-      {filter === 'by_round' && allRounds.length > 0 && (
+      {/* SECONDARY SELECTOR FOR BY ROUND / BY GROUP */}
+      {(filter === 'by_round' || filter === 'by_group') && allRounds.length > 0 && (
         <View style={styles.selectorsSection}>
           <Text style={styles.selectorLabel}>Select Round:</Text>
           <ScrollView
@@ -144,12 +211,27 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
         </View>
       )}
 
-      {/* SCORE TYPE BANNER */}
+      {/* SCORE TYPE BANNER & EXPORT BUTTON */}
       <View style={styles.scoreTypeBanner}>
-        <Ionicons name="information-circle" size={16} color={COLORS.primary} style={{ marginRight: 6 }} />
-        <Text style={styles.scoreTypeBannerText}>
-          Showing: <Text style={{ fontWeight: '700' }}>{getScoreLabel()}</Text> (Ranked Highest → Lowest)
-        </Text>
+        <View style={styles.scoreBannerLeft}>
+          <Ionicons name="information-circle" size={16} color={COLORS.primary} style={{ marginRight: 6 }} />
+          <Text style={styles.scoreTypeBannerText} numberOfLines={1}>
+            <Text style={{ fontWeight: '700' }}>{getScoreLabel()}</Text>
+          </Text>
+        </View>
+
+        <TouchableOpacity
+          style={styles.exportReportButton}
+          onPress={handleExportReport}
+          disabled={isExporting}
+          activeOpacity={0.8}
+          accessibilityLabel="Export report to Excel"
+        >
+          <Ionicons name="cloud-download-outline" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+          <Text style={styles.exportReportButtonText}>
+            {isExporting ? '...' : 'Export Excel'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       {/* REPORT LIST */}
@@ -157,6 +239,88 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
         <View style={styles.loaderContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
+      ) : filter === 'by_group' ? (
+        groupReportItems.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <EmptyState
+              iconName="trophy-outline"
+              title="No group scores yet."
+              description="Complete a round, record scores and item carry bonuses to view the group leaderboard."
+              actionText="Go to Round"
+              onActionPress={() => onNavigate('round')}
+            />
+          </View>
+        ) : (
+          <FlatList
+            data={groupReportItems}
+            keyExtractor={(item) => item.group_id}
+            contentContainerStyle={styles.listContent}
+            renderItem={({ item, index }) => {
+              const isTop3 = item.rank <= 3;
+              return (
+                <SlideUp delay={Math.min(index * 50, 500)}>
+                  <View style={[styles.groupRankCard, isTop3 && styles.rankCardTop]}>
+                    {/* Rank Badge */}
+                    <View
+                      style={[
+                        styles.rankBadge,
+                        item.rank === 1 && styles.rankBadgeFirst,
+                        item.rank === 2 && styles.rankBadgeSecond,
+                        item.rank === 3 && styles.rankBadgeThird,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.rankText,
+                          item.rank === 1 && styles.rankTextFirst,
+                          item.rank === 2 && styles.rankTextSecond,
+                          item.rank === 3 && styles.rankTextThird,
+                        ]}
+                      >
+                        {item.rank}
+                      </Text>
+                    </View>
+
+                    {/* Group Info */}
+                    <View style={styles.groupInfo}>
+                      <Text style={styles.groupName} numberOfLines={1}>
+                        GROUP {item.group_number}{item.name ? ` — ${item.name}` : ''}
+                      </Text>
+                      <Text style={styles.groupMembersText} numberOfLines={1}>
+                        {item.member_count} {pluralize(item.member_count, 'player')}
+                        {item.member_names.length > 0 ? ` (${item.member_names.join(', ')})` : ''}
+                      </Text>
+                      <View style={styles.groupBonusBreakdownRow}>
+                        <Text style={styles.groupBreakdownChip}>
+                          Quiz: {item.quiz_score} pts
+                        </Text>
+                        <Text
+                          style={[
+                            styles.groupBreakdownChip,
+                            item.items_bonus > 0 && { color: COLORS.success, fontWeight: '700' },
+                          ]}
+                        >
+                          Items: +{item.items_bonus} pts
+                        </Text>
+                      </View>
+                      {item.items_bonus > 0 && (
+                        <Text style={styles.itemsCarryBreakdownText}>
+                          📖 {item.book_count} {item.book_name || 'Book'} • 🖊️ {item.pen_count} {item.pen_name || 'Pen'} • 📄 {item.paper_count} {item.paper_name || 'Paper'}
+                        </Text>
+                      )}
+                    </View>
+
+                    {/* Total Group Score */}
+                    <View style={styles.scoreBox}>
+                      <Text style={styles.scoreValue}>{item.total_score}</Text>
+                      <Text style={styles.scoreUnit}>pts</Text>
+                    </View>
+                  </View>
+                </SlideUp>
+              );
+            }}
+          />
+        )
       ) : reportItems.length === 0 ? (
         <View style={styles.emptyContainer}>
           <EmptyState
@@ -178,41 +342,41 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
               <SlideUp delay={Math.min(index * 50, 500)}>
                 <View style={[styles.rankCard, isTop3 && styles.rankCardTop]}>
                   {/* Rank Badge */}
-                <View
-                  style={[
-                    styles.rankBadge,
-                    item.rank === 1 && styles.rankBadgeFirst,
-                    item.rank === 2 && styles.rankBadgeSecond,
-                    item.rank === 3 && styles.rankBadgeThird,
-                  ]}
-                >
-                  <Text
+                  <View
                     style={[
-                      styles.rankText,
-                      item.rank === 1 && styles.rankTextFirst,
-                      item.rank === 2 && styles.rankTextSecond,
-                      item.rank === 3 && styles.rankTextThird,
+                      styles.rankBadge,
+                      item.rank === 1 && styles.rankBadgeFirst,
+                      item.rank === 2 && styles.rankBadgeSecond,
+                      item.rank === 3 && styles.rankBadgeThird,
                     ]}
                   >
-                    {item.rank}
-                  </Text>
-                </View>
+                    <Text
+                      style={[
+                        styles.rankText,
+                        item.rank === 1 && styles.rankTextFirst,
+                        item.rank === 2 && styles.rankTextSecond,
+                        item.rank === 3 && styles.rankTextThird,
+                      ]}
+                    >
+                      {item.rank}
+                    </Text>
+                  </View>
 
-                {/* Player Info */}
-                <View style={styles.playerInfo}>
-                  <Text style={styles.playerName} numberOfLines={1}>
-                    {item.player_name}
-                  </Text>
-                  <PlayerIdBadge playerNumber={item.player_number} />
-                </View>
+                  {/* Player Info */}
+                  <View style={styles.playerInfo}>
+                    <Text style={styles.playerName} numberOfLines={1}>
+                      {item.player_name}
+                    </Text>
+                    <PlayerIdBadge playerNumber={item.player_number} />
+                  </View>
 
-                {/* Score Value */}
-                <View style={styles.scoreBox}>
-                  <Text style={styles.scoreValue}>{item.score}</Text>
-                  <Text style={styles.scoreUnit}>pts</Text>
+                  {/* Score Value */}
+                  <View style={styles.scoreBox}>
+                    <Text style={styles.scoreValue}>{item.score}</Text>
+                    <Text style={styles.scoreUnit}>pts</Text>
+                  </View>
                 </View>
-              </View>
-            </SlideUp>
+              </SlideUp>
             );
           }}
         />
@@ -294,13 +458,40 @@ const styles = StyleSheet.create({
   scoreTypeBanner: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     backgroundColor: COLORS.primaryContainer,
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
+  scoreBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 8,
+  },
   scoreTypeBannerText: {
     fontSize: 12,
     color: COLORS.onPrimaryContainer,
+    flexShrink: 1,
+  },
+  exportReportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8,
+    flexShrink: 0,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  exportReportButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   loaderContainer: {
     flex: 1,
@@ -391,5 +582,46 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textMuted,
     textTransform: 'uppercase',
+  },
+  groupRankCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    elevation: 1,
+  },
+  groupInfo: {
+    flex: 1,
+    marginRight: 10,
+  },
+  groupName: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+    letterSpacing: 0.3,
+  },
+  groupMembersText: {
+    fontSize: 12,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  groupBonusBreakdownRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 4,
+  },
+  groupBreakdownChip: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    fontWeight: '600',
+  },
+  itemsCarryBreakdownText: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
   },
 });

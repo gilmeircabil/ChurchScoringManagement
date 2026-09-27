@@ -111,6 +111,59 @@ export class PlayerRepository {
     };
   }
 
+  /**
+   * Bulk creates multiple players in a single atomic transaction.
+   * Assigns sequential player_numbers starting after the current maximum.
+   */
+  async createPlayersBatch(
+    items: { name: string; initialScore?: number }[]
+  ): Promise<{ createdCount: number; players: Player[] }> {
+    if (!items || items.length === 0) {
+      return { createdCount: 0, players: [] };
+    }
+
+    const createdPlayers: Player[] = [];
+    const now = new Date().toISOString();
+
+    await this.db.withTransactionAsync(async () => {
+      let nextNumber = await this.getNextPlayerNumber();
+
+      for (const item of items) {
+        const cleanName = item.name.trim();
+        if (!cleanName) continue;
+
+        const id = generateId();
+        const playerNumber = nextNumber++;
+        const safeInitialScore = Math.max(0, item.initialScore ?? 0);
+
+        await this.db.runAsync(
+          'INSERT INTO players (id, player_number, name, initial_score, active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)',
+          id,
+          playerNumber,
+          cleanName,
+          safeInitialScore,
+          now,
+          now
+        );
+
+        createdPlayers.push({
+          id,
+          player_number: playerNumber,
+          name: cleanName,
+          initial_score: safeInitialScore,
+          active: 1,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+    });
+
+    return {
+      createdCount: createdPlayers.length,
+      players: createdPlayers,
+    };
+  }
+
   async updatePlayer(id: string, newName: string, initialScore?: number): Promise<void> {
     const now = new Date().toISOString();
     const cleanName = newName.trim();

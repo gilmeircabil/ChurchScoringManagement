@@ -170,10 +170,20 @@ export class BackupRepository {
       // Insert groups
       for (const g of data.groups) {
         await this.db.runAsync(
-          'INSERT INTO groups (id, round_id, group_number) VALUES (?, ?, ?)',
+          'INSERT INTO groups (id, round_id, group_number, book_count, pen_count, paper_count, book_points, pen_points, paper_points, name, book_name, pen_name, paper_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           g.id,
           g.round_id,
-          g.group_number
+          g.group_number,
+          g.book_count ?? 0,
+          g.pen_count ?? 0,
+          g.paper_count ?? 0,
+          g.book_points ?? 10,
+          g.pen_points ?? 5,
+          g.paper_points ?? 5,
+          g.name ?? null,
+          g.book_name || 'Book',
+          g.pen_name || 'Pen',
+          g.paper_name || 'Paper'
         );
       }
 

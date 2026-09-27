@@ -64,10 +64,38 @@ export class GroupRepository {
 
     return groups.map((g) => {
       const members = assignedMembers.filter((m) => m.group_id === g.id);
+      const quiz_score = members.reduce((sum, m) => sum + (m.round_score || 0), 0);
+      const book_count = g.book_count ?? 0;
+      const pen_count = g.pen_count ?? 0;
+      const paper_count = g.paper_count ?? 0;
+      const book_points = g.book_points ?? 10;
+      const pen_points = g.pen_points ?? 5;
+      const paper_points = g.paper_points ?? 5;
+      const items_bonus =
+        book_count * book_points + pen_count * pen_points + paper_count * paper_points;
+      const total_score = quiz_score + items_bonus;
+
+      const book_name = g.book_name || 'Book';
+      const pen_name = g.pen_name || 'Pen';
+      const paper_name = g.paper_name || 'Paper';
+
       return {
         id: g.id,
         group_number: g.group_number,
+        name: g.name ?? null,
         members,
+        book_count,
+        pen_count,
+        paper_count,
+        book_points,
+        pen_points,
+        paper_points,
+        book_name,
+        pen_name,
+        paper_name,
+        quiz_score,
+        items_bonus,
+        total_score,
       };
     });
   }
@@ -202,5 +230,148 @@ export class GroupRepository {
         );
       }
     });
+  }
+
+  /**
+   * Updates item carry counts, item names, and point values for a group, and optionally custom group name.
+   */
+  async updateGroupItems(
+    groupId: string,
+    data: {
+      name?: string | null;
+      book_count: number;
+      pen_count: number;
+      paper_count: number;
+      book_points?: number;
+      pen_points?: number;
+      paper_points?: number;
+      book_name?: string;
+      pen_name?: string;
+      paper_name?: string;
+    }
+  ): Promise<void> {
+    const group = await this.db.getFirstAsync<Group>(
+      'SELECT * FROM groups WHERE id = ?',
+      groupId
+    );
+    if (!group) throw new Error('Group not found.');
+
+    const round = await this.db.getFirstAsync<{ status: string }>(
+      'SELECT status FROM rounds WHERE id = ?',
+      group.round_id
+    );
+    if (round?.status === 'LOCKED') {
+      throw new Error('This round is locked. Unlock the round before making changes.');
+    }
+
+    const bCount = Math.max(0, data.book_count || 0);
+    const pCount = Math.max(0, data.pen_count || 0);
+    const paCount = Math.max(0, data.paper_count || 0);
+    const bPts =
+      typeof data.book_points === 'number'
+        ? Math.max(0, data.book_points)
+        : (group.book_points ?? 10);
+    const pPts =
+      typeof data.pen_points === 'number'
+        ? Math.max(0, data.pen_points)
+        : (group.pen_points ?? 5);
+    const paPts =
+      typeof data.paper_points === 'number'
+        ? Math.max(0, data.paper_points)
+        : (group.paper_points ?? 5);
+    const bName = (data.book_name && data.book_name.trim()) || group.book_name || 'Book';
+    const pName = (data.pen_name && data.pen_name.trim()) || group.pen_name || 'Pen';
+    const paName = (data.paper_name && data.paper_name.trim()) || group.paper_name || 'Paper';
+    const groupName = data.name !== undefined ? (data.name?.trim() || null) : (group.name ?? null);
+
+    await this.db.runAsync(
+      `UPDATE groups 
+       SET name = ?, book_count = ?, pen_count = ?, paper_count = ?, book_points = ?, pen_points = ?, paper_points = ?, book_name = ?, pen_name = ?, paper_name = ?
+       WHERE id = ?`,
+      groupName,
+      bCount,
+      pCount,
+      paCount,
+      bPts,
+      pPts,
+      paPts,
+      bName,
+      pName,
+      paName,
+      groupId
+    );
+  }
+
+  /**
+   * Updates item names and point values across all groups in a round.
+   */
+  async updateRoundItemRules(
+    roundId: string,
+    rules: {
+      book_points: number;
+      pen_points: number;
+      paper_points: number;
+      book_name?: string;
+      pen_name?: string;
+      paper_name?: string;
+    }
+  ): Promise<void> {
+    const round = await this.db.getFirstAsync<{ status: string }>(
+      'SELECT status FROM rounds WHERE id = ?',
+      roundId
+    );
+    if (round?.status === 'LOCKED') {
+      throw new Error('This round is locked. Unlock the round before making changes.');
+    }
+
+    const bPts = Math.max(0, rules.book_points);
+    const pPts = Math.max(0, rules.pen_points);
+    const paPts = Math.max(0, rules.paper_points);
+    const bName = rules.book_name?.trim() || 'Book';
+    const pName = rules.pen_name?.trim() || 'Pen';
+    const paName = rules.paper_name?.trim() || 'Paper';
+
+    await this.db.runAsync(
+      'UPDATE groups SET book_points = ?, pen_points = ?, paper_points = ?, book_name = ?, pen_name = ?, paper_name = ? WHERE round_id = ?',
+      bPts,
+      pPts,
+      paPts,
+      bName,
+      pName,
+      paName,
+      roundId
+    );
+  }
+
+  /**
+   * Updates the point values for items across all groups in a round (backward-compatible).
+   */
+  async updateRoundItemPoints(
+    roundId: string,
+    points: {
+      book_points: number;
+      pen_points: number;
+      paper_points: number;
+    }
+  ): Promise<void> {
+    const round = await this.db.getFirstAsync<{ status: string }>(
+      'SELECT status FROM rounds WHERE id = ?',
+      roundId
+    );
+    if (round?.status === 'LOCKED') {
+      throw new Error('This round is locked. Unlock the round before making changes.');
+    }
+
+    const bPts = Math.max(0, points.book_points);
+    const pPts = Math.max(0, points.pen_points);
+    const paPts = Math.max(0, points.paper_points);
+
+    await this.db.runAsync(
+      'UPDATE groups SET book_points = ?, pen_points = ?, paper_points = ? WHERE round_id = ?',
+      bPts,
+      pPts,
+      paPts,
+      roundId
+    );
   }
 }

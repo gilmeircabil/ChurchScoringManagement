@@ -27,6 +27,16 @@ CREATE TABLE IF NOT EXISTS groups (
     id TEXT PRIMARY KEY,
     round_id TEXT NOT NULL,
     group_number INTEGER NOT NULL,
+    name TEXT,
+    book_count INTEGER NOT NULL DEFAULT 0,
+    pen_count INTEGER NOT NULL DEFAULT 0,
+    paper_count INTEGER NOT NULL DEFAULT 0,
+    book_points INTEGER NOT NULL DEFAULT 10,
+    pen_points INTEGER NOT NULL DEFAULT 5,
+    paper_points INTEGER NOT NULL DEFAULT 5,
+    book_name TEXT NOT NULL DEFAULT 'Book',
+    pen_name TEXT NOT NULL DEFAULT 'Pen',
+    paper_name TEXT NOT NULL DEFAULT 'Paper',
     FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
 );
 
@@ -87,4 +97,36 @@ export async function initializeDatabase(db: IDatabaseConnection): Promise<void>
   } catch {
     // Column already exists
   }
+
+  // Ensure groups table has items bonus columns for upgraded databases
+  try {
+    await db.execAsync('ALTER TABLE groups ADD COLUMN book_count INTEGER NOT NULL DEFAULT 0;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE groups ADD COLUMN pen_count INTEGER NOT NULL DEFAULT 0;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE groups ADD COLUMN paper_count INTEGER NOT NULL DEFAULT 0;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE groups ADD COLUMN book_points INTEGER NOT NULL DEFAULT 10;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE groups ADD COLUMN pen_points INTEGER NOT NULL DEFAULT 5;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE groups ADD COLUMN paper_points INTEGER NOT NULL DEFAULT 5;');
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE groups ADD COLUMN name TEXT;');
+  } catch {}
+  try {
+    await db.execAsync("ALTER TABLE groups ADD COLUMN book_name TEXT NOT NULL DEFAULT 'Book';");
+  } catch {}
+  try {
+    await db.execAsync("ALTER TABLE groups ADD COLUMN pen_name TEXT NOT NULL DEFAULT 'Pen';");
+  } catch {}
+  try {
+    await db.execAsync("ALTER TABLE groups ADD COLUMN paper_name TEXT NOT NULL DEFAULT 'Paper';");
+  } catch {}
 }

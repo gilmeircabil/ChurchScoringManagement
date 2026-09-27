@@ -16,6 +16,35 @@ import { MainTab } from './src/types';
 import { COLORS } from './src/constants/colors';
 import { APP_CONFIG } from './src/constants/config';
 
+// Remove harsh browser default focus outline rings on web
+if (Platform.OS === 'web' && typeof document !== 'undefined') {
+  const styleId = 'suppress-browser-focus-outline';
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement('style');
+    style.id = styleId;
+    style.textContent = `
+      input, textarea, select, [contenteditable] {
+        outline: none !important;
+        outline-style: none !important;
+        outline-width: 0 !important;
+        outline-color: transparent !important;
+        box-shadow: none !important;
+      }
+      input:focus, textarea:focus, select:focus, [contenteditable]:focus {
+        outline: none !important;
+        outline-style: none !important;
+        outline-width: 0 !important;
+        outline-color: transparent !important;
+        box-shadow: none !important;
+      }
+      *:focus-visible {
+        outline: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+}
+
 export default function App() {
   const [isDbReady, setIsDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
