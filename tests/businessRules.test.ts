@@ -899,9 +899,9 @@ describe('Quiz Score Manager — Business Rules and Scenarios', () => {
     const wsOverall = wb.Sheets['Overall Leaderboard'];
     const overallData: any[][] = XLSX.utils.sheet_to_json(wsOverall, { header: 1 });
     expect(overallData[0]).toEqual(['Rank', 'Player ID', 'Player Name', 'Total Score', 'Rounds Played']);
-    // Paul has 50, Peter has 40
-    expect(overallData[1]).toEqual([1, '#002', 'Paul', 50, 1]);
-    expect(overallData[2]).toEqual([2, '#001', 'Peter', 40, 1]);
+    // Peter has 40 quiz + 45 carry items bonus = 85, Paul has 50 quiz + 0 carry = 50
+    expect(overallData[1]).toEqual([1, '#001', 'Peter', 85, 1]);
+    expect(overallData[2]).toEqual([2, '#002', 'Paul', 50, 1]);
 
     // Verify Group Standings with items bonus carry
     const wsGroup = wb.Sheets['Group Standings'];
@@ -955,5 +955,90 @@ describe('Quiz Score Manager — Business Rules and Scenarios', () => {
 
     const res = await exportDatabaseBackupToExcel(backupData);
     expect(res.success).toBe(true);
+  });
+
+  // TEST 30 — Group-level scoring: Score is added per group and synchronizes all group members
+  test('Test 30 — Adding score per group sets group quiz_score and synchronizes member scores', async () => {
+    const round = await service.rounds.createRound('2026-09-30', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const alice = await service.players.createPlayer('Alice');
+    const bob = await service.players.createPlayer('Bob');
+    const charlie = await service.players.createPlayer('Charlie');
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const group1 = groups.find((g) => g.group_number === 1)!;
+    const group2 = groups.find((g) => g.group_number === 2)!;
+
+    await service.groups.assignPlayerToGroup(round.id, group1.id, alice.id);
+    await service.groups.assignPlayerToGroup(round.id, group1.id, bob.id);
+    await service.groups.assignPlayerToGroup(round.id, group2.id, charlie.id);
+
+    // Save group-level score: 35 points for Group 1
+    await service.scores.saveGroupScore(round.id, group1.id, 35);
+
+    // Verify group details
+    let details = await service.groups.getGroupDetails(round.id);
+    let g1 = details.find((d) => d.id === group1.id)!;
+    expect(g1.quiz_score).toBe(35);
+    expect(g1.total_score).toBe(35);
+
+    // Verify both Alice and Bob received 35 points in the round
+    expect(g1.members).toHaveLength(2);
+    expect(g1.members.find((m) => m.player_id === alice.id)?.round_score).toBe(35);
+    expect(g1.members.find((m) => m.player_id === bob.id)?.round_score).toBe(35);
+
+    // Verify player leaderboard / cumulative stats reflect group score
+    const playersWithStats = await service.players.searchPlayersWithStats('');
+    const aliceStats = playersWithStats.find((p) => p.id === alice.id)!;
+    const bobStats = playersWithStats.find((p) => p.id === bob.id)!;
+    expect(aliceStats.total_score).toBe(35);
+    expect(bobStats.total_score).toBe(35);
+
+    // Add items bonus to Group 1 (e.g. 2 books @ 10 pts = 20 pts)
+    await service.groups.updateGroupItems(group1.id, {
+      book_count: 2,
+      pen_count: 0,
+      paper_count: 0,
+    });
+
+    details = await service.groups.getGroupDetails(round.id);
+    g1 = details.find((d) => d.id === group1.id)!;
+    expect(g1.quiz_score).toBe(35);
+    expect(g1.items_bonus).toBe(20);
+    expect(g1.total_score).toBe(55);
+
+    // Carry total is added to the players also: Alice and Bob now have 55 (35 quiz + 20 carry)
+    const updatedStats = await service.players.searchPlayersWithStats('');
+    const aliceUpdated = updatedStats.find((p) => p.id === alice.id)!;
+    const bobUpdated = updatedStats.find((p) => p.id === bob.id)!;
+    expect(aliceUpdated.total_score).toBe(55);
+    expect(bobUpdated.total_score).toBe(55);
+    expect(g1.members.find((m) => m.player_id === alice.id)?.round_score).toBe(55);
+    expect(g1.members.find((m) => m.player_id === bob.id)?.round_score).toBe(55);
+  });
+
+  // TEST 31 — Group-level scoring rejects updates when round is LOCKED or DRAFT
+  test('Test 31 — Group-level scoring enforces round status constraints', async () => {
+    const draftRound = await service.rounds.createRound('2026-10-01', 2);
+    const groups = await service.groups.getGroupsByRoundId(draftRound.id);
+    const g1 = groups[0];
+
+    // Cannot score in DRAFT
+    await expect(
+      service.scores.saveGroupScore(draftRound.id, g1.id, 20)
+    ).rejects.toThrow('This round has not started');
+
+    // Activate round
+    await service.rounds.updateRoundStatus(draftRound.id, 'ACTIVE');
+    await service.scores.saveGroupScore(draftRound.id, g1.id, 20);
+
+    // Lock round
+    await service.rounds.updateRoundStatus(draftRound.id, 'LOCKED');
+
+    // Cannot score in LOCKED
+    await expect(
+      service.scores.saveGroupScore(draftRound.id, g1.id, 30)
+    ).rejects.toThrow('This round is locked');
   });
 });

@@ -1,5 +1,5 @@
 import { IDatabaseConnection } from '../database/types';
-import { Group, AssignedMember, GroupDetail, Player } from '../types';
+import { Group, AssignedMember, GroupDetail, Player, Score } from '../types';
 import { generateId } from '../utils/idGenerator';
 
 export class GroupRepository {
@@ -64,7 +64,10 @@ export class GroupRepository {
 
     return groups.map((g) => {
       const members = assignedMembers.filter((m) => m.group_id === g.id);
-      const quiz_score = members.reduce((sum, m) => sum + (m.round_score || 0), 0);
+      const quiz_score =
+        g.quiz_score !== undefined && g.quiz_score !== null
+          ? g.quiz_score
+          : members.reduce((sum, m) => sum + (m.round_score || 0), 0);
       const book_count = g.book_count ?? 0;
       const pen_count = g.pen_count ?? 0;
       const paper_count = g.paper_count ?? 0;
@@ -180,8 +183,21 @@ export class GroupRepository {
         now
       );
 
-      // Ensure score row exists with default 0 if not already present
-      const existingScore = await this.db.getFirstAsync(
+      // Ensure score row exists and matches group's current total score (quiz_score + items_bonus)
+      const targetGroup = await this.db.getFirstAsync<Group>(
+        'SELECT * FROM groups WHERE id = ?',
+        groupId
+      );
+      const bCount = targetGroup?.book_count ?? 0;
+      const pCount = targetGroup?.pen_count ?? 0;
+      const paCount = targetGroup?.paper_count ?? 0;
+      const bPts = targetGroup?.book_points ?? 10;
+      const pPts = targetGroup?.pen_points ?? 5;
+      const paPts = targetGroup?.paper_points ?? 5;
+      const itemsBonus = bCount * bPts + pCount * pPts + paCount * paPts;
+      const groupScore = (targetGroup?.quiz_score ?? 0) + itemsBonus;
+
+      const existingScore = await this.db.getFirstAsync<{ id: string }>(
         'SELECT id FROM scores WHERE round_id = ? AND player_id = ?',
         roundId,
         playerId
@@ -189,12 +205,20 @@ export class GroupRepository {
       if (!existingScore) {
         const scoreId = generateId();
         await this.db.runAsync(
-          'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?)',
+          'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
           scoreId,
           roundId,
           playerId,
+          groupScore,
           now,
           now
+        );
+      } else if (groupScore > 0) {
+        await this.db.runAsync(
+          'UPDATE scores SET points = ?, updated_at = ? WHERE id = ?',
+          groupScore,
+          now,
+          existingScore.id
         );
       }
     });
@@ -284,22 +308,64 @@ export class GroupRepository {
     const paName = (data.paper_name && data.paper_name.trim()) || group.paper_name || 'Paper';
     const groupName = data.name !== undefined ? (data.name?.trim() || null) : (group.name ?? null);
 
-    await this.db.runAsync(
-      `UPDATE groups 
-       SET name = ?, book_count = ?, pen_count = ?, paper_count = ?, book_points = ?, pen_points = ?, paper_points = ?, book_name = ?, pen_name = ?, paper_name = ?
-       WHERE id = ?`,
-      groupName,
-      bCount,
-      pCount,
-      paCount,
-      bPts,
-      pPts,
-      paPts,
-      bName,
-      pName,
-      paName,
-      groupId
-    );
+    const totalItemsBonus = bCount * bPts + pCount * pPts + paCount * paPts;
+    const quizScore = group.quiz_score ?? 0;
+    const totalPlayerPoints = quizScore + totalItemsBonus;
+
+    await this.db.withTransactionAsync(async () => {
+      await this.db.runAsync(
+        `UPDATE groups 
+         SET name = ?, book_count = ?, pen_count = ?, paper_count = ?, book_points = ?, pen_points = ?, paper_points = ?, book_name = ?, pen_name = ?, paper_name = ?
+         WHERE id = ?`,
+        groupName,
+        bCount,
+        pCount,
+        paCount,
+        bPts,
+        pPts,
+        paPts,
+        bName,
+        pName,
+        paName,
+        groupId
+      );
+
+      // Carry total is added to player also: sync all members of this group in this round
+      const members = await this.db.getAllAsync<{ player_id: string }>(
+        'SELECT player_id FROM group_members WHERE round_id = ? AND group_id = ?',
+        group.round_id,
+        groupId
+      );
+
+      const now = new Date().toISOString();
+      for (const m of members) {
+        const existing = await this.db.getFirstAsync<Score>(
+          'SELECT id FROM scores WHERE round_id = ? AND player_id = ?',
+          group.round_id,
+          m.player_id
+        );
+
+        if (existing) {
+          await this.db.runAsync(
+            'UPDATE scores SET points = ?, updated_at = ? WHERE id = ?',
+            totalPlayerPoints,
+            now,
+            existing.id
+          );
+        } else {
+          const id = generateId();
+          await this.db.runAsync(
+            'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+            id,
+            group.round_id,
+            m.player_id,
+            totalPlayerPoints,
+            now,
+            now
+          );
+        }
+      }
+    });
   }
 
   /**
@@ -331,16 +397,62 @@ export class GroupRepository {
     const pName = rules.pen_name?.trim() || 'Pen';
     const paName = rules.paper_name?.trim() || 'Paper';
 
-    await this.db.runAsync(
-      'UPDATE groups SET book_points = ?, pen_points = ?, paper_points = ?, book_name = ?, pen_name = ?, paper_name = ? WHERE round_id = ?',
-      bPts,
-      pPts,
-      paPts,
-      bName,
-      pName,
-      paName,
-      roundId
-    );
+    await this.db.withTransactionAsync(async () => {
+      await this.db.runAsync(
+        'UPDATE groups SET book_points = ?, pen_points = ?, paper_points = ?, book_name = ?, pen_name = ?, paper_name = ? WHERE round_id = ?',
+        bPts,
+        pPts,
+        paPts,
+        bName,
+        pName,
+        paName,
+        roundId
+      );
+
+      // Re-synchronize member scores for all groups in this round
+      const groupsInRound = await this.db.getAllAsync<Group>(
+        'SELECT * FROM groups WHERE round_id = ?',
+        roundId
+      );
+      const now = new Date().toISOString();
+      for (const g of groupsInRound) {
+        const itemsBonus = (g.book_count ?? 0) * bPts + (g.pen_count ?? 0) * pPts + (g.paper_count ?? 0) * paPts;
+        const totalScore = (g.quiz_score ?? 0) + itemsBonus;
+
+        const members = await this.db.getAllAsync<{ player_id: string }>(
+          'SELECT player_id FROM group_members WHERE round_id = ? AND group_id = ?',
+          roundId,
+          g.id
+        );
+
+        for (const m of members) {
+          const existing = await this.db.getFirstAsync<Score>(
+            'SELECT id FROM scores WHERE round_id = ? AND player_id = ?',
+            roundId,
+            m.player_id
+          );
+          if (existing) {
+            await this.db.runAsync(
+              'UPDATE scores SET points = ?, updated_at = ? WHERE id = ?',
+              totalScore,
+              now,
+              existing.id
+            );
+          } else {
+            const id = generateId();
+            await this.db.runAsync(
+              'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+              id,
+              roundId,
+              m.player_id,
+              totalScore,
+              now,
+              now
+            );
+          }
+        }
+      }
+    });
   }
 
   /**
@@ -354,24 +466,6 @@ export class GroupRepository {
       paper_points: number;
     }
   ): Promise<void> {
-    const round = await this.db.getFirstAsync<{ status: string }>(
-      'SELECT status FROM rounds WHERE id = ?',
-      roundId
-    );
-    if (round?.status === 'LOCKED') {
-      throw new Error('This round is locked. Unlock the round before making changes.');
-    }
-
-    const bPts = Math.max(0, points.book_points);
-    const pPts = Math.max(0, points.pen_points);
-    const paPts = Math.max(0, points.paper_points);
-
-    await this.db.runAsync(
-      'UPDATE groups SET book_points = ?, pen_points = ?, paper_points = ? WHERE round_id = ?',
-      bPts,
-      pPts,
-      paPts,
-      roundId
-    );
+    await this.updateRoundItemRules(roundId, points);
   }
 }

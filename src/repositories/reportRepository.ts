@@ -110,7 +110,10 @@ export class ReportRepository {
 
     const mapped = groups.map((g) => {
       const members = assignedMembers.filter((m) => m.group_id === g.id);
-      const quiz_score = members.reduce((sum, m) => sum + (m.round_score || 0), 0);
+      const quiz_score =
+        g.quiz_score !== undefined && g.quiz_score !== null
+          ? g.quiz_score
+          : members.reduce((sum, m) => sum + (m.round_score || 0), 0);
       const book_count = g.book_count ?? 0;
       const pen_count = g.pen_count ?? 0;
       const paper_count = g.paper_count ?? 0;

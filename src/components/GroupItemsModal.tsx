@@ -469,22 +469,6 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
 
             {/* LIVE AUTO TOTAL SUMMARY CARD */}
             <View style={styles.summaryCard}>
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Quiz Subtotal (Members)</Text>
-                <Text style={styles.summaryValue}>{quizScore} pts</Text>
-              </View>
-
-              <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>
-                  Items Bonus (📖 {numBookCount} + 🖊️ {numPenCount} + 📄 {numPaperCount})
-                </Text>
-                <Text style={[styles.summaryValue, { color: COLORS.success }]}>
-                  +{itemsBonusTotal} pts
-                </Text>
-              </View>
-
-              <View style={styles.summaryDivider} />
-
               <View style={styles.summaryTotalRow}>
                 <View>
                   <Text style={styles.totalLabel}>TOTAL GROUP SCORE</Text>
@@ -835,26 +819,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.borderDark,
     marginBottom: 8,
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 6,
-  },
-  summaryLabel: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-  },
-  summaryValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  summaryDivider: {
-    height: 1,
-    backgroundColor: COLORS.border,
-    marginVertical: 8,
   },
   summaryTotalRow: {
     flexDirection: 'row',

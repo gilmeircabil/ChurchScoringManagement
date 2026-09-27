@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getQuizService } from '../services/quizService';
-import { Round, GroupDetail, AssignedMember } from '../types';
+import { Round, GroupDetail } from '../types';
 import { COLORS } from '../constants/colors';
 import { formatDateDisplay, pluralize } from '../utils/formatters';
 import { ConfirmationModal } from '../components/ConfirmationModal';
@@ -20,7 +20,6 @@ import { ScoreModal } from '../components/ScoreModal';
 import { GroupItemsModal } from '../components/GroupItemsModal';
 import { RoundStatusBadge } from '../components/RoundStatusBadge';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
-import { PendingScorePlaceholder } from '../components/PendingScorePlaceholder';
 
 interface RoundDetailModalProps {
   visible: boolean;
@@ -43,7 +42,7 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
     unassignedCount: number;
   }>({ totalPlayers: 0, assignedCount: 0, unassignedCount: 0 });
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
-  const [scoringMember, setScoringMember] = useState<AssignedMember | null>(null);
+  const [scoringGroup, setScoringGroup] = useState<GroupDetail | null>(null);
   const [selectedGroupForItems, setSelectedGroupForItems] = useState<GroupDetail | null>(null);
 
   const loadDetails = async (roundId: string) => {
@@ -80,15 +79,15 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
     }
   };
 
-  const handleSaveScore = async (points: number) => {
-    if (!round || !scoringMember) return;
+  const handleSaveGroupScore = async (points: number) => {
+    if (!round || !scoringGroup) return;
     try {
       const service = await getQuizService();
-      await service.scores.saveScore(round.id, scoringMember.player_id, points);
-      setScoringMember(null);
+      await service.scores.saveGroupScore(round.id, scoringGroup.id, points);
+      setScoringGroup(null);
       loadDetails(round.id);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Unable to save score.');
+      Alert.alert('Error', err.message || 'Unable to save group score.');
     }
   };
 
@@ -200,26 +199,6 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
                           </Text>
                           <PlayerIdBadge playerNumber={member.player_number} />
                         </View>
-                        {round.status === 'DRAFT' ? (
-                          <PendingScorePlaceholder />
-                        ) : (
-                          <View style={styles.scoreActionRow}>
-                            <TouchableOpacity
-                              style={styles.scoreBadge}
-                              onPress={() => {
-                                if (round.status === 'LOCKED') {
-                                  setShowUnlockConfirm(true);
-                                } else {
-                                  setScoringMember(member);
-                                }
-                              }}
-                              activeOpacity={0.7}
-                              accessibilityLabel={`Score +${member.round_score}. Tap to edit`}
-                            >
-                              <Text style={styles.scoreText}>+{member.round_score}</Text>
-                            </TouchableOpacity>
-                          </View>
-                        )}
                       </View>
                     ))
                   )}
@@ -228,39 +207,62 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
                   {round.status !== 'DRAFT' && (
                     <View style={styles.groupDetailFooter}>
                       <View style={styles.groupDetailBreakdown}>
-                        <Text style={styles.groupDetailBreakdownText}>
-                          Quiz: {group.quiz_score} pts • Items: +{group.items_bonus} pts
-                        </Text>
+                        <View style={styles.groupDetailScoreControls}>
+                          <TouchableOpacity
+                            style={[
+                              styles.groupDetailQuizBadge,
+                              round.status === 'ACTIVE' && styles.groupDetailQuizBadgeActive,
+                            ]}
+                            onPress={() => {
+                              if (round.status === 'LOCKED') {
+                                setShowUnlockConfirm(true);
+                              } else {
+                                setScoringGroup(group);
+                              }
+                            }}
+                            activeOpacity={0.7}
+                            accessibilityLabel={`Quiz score: ${group.quiz_score ?? 0} points. Tap to edit`}
+                          >
+                            <Ionicons name="school-outline" size={13} color={COLORS.primary} />
+                            <Text style={styles.groupDetailQuizText}>
+                              Quiz: {group.quiz_score ?? 0} pts
+                            </Text>
+                            {round.status === 'ACTIVE' && (
+                              <Ionicons name="pencil" size={11} color={COLORS.primary} style={{ marginLeft: 2 }} />
+                            )}
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.groupDetailItemsBtn}
+                            onPress={() => {
+                              if (round.status === 'LOCKED') {
+                                setShowUnlockConfirm(true);
+                              } else {
+                                setSelectedGroupForItems(group);
+                              }
+                            }}
+                          >
+                            <Ionicons
+                              name={round.status === 'LOCKED' ? 'lock-closed' : 'pricetag'}
+                              size={12}
+                              color={COLORS.primary}
+                            />
+                            <Text style={styles.groupDetailItemsBtnText}>
+                              {round.status === 'LOCKED'
+                                ? `Items: +${group.items_bonus} pts`
+                                : group.items_bonus > 0
+                                ? `Items (+${group.items_bonus})`
+                                : '+ Add Items'}
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
+
                         {group.items_bonus > 0 && (
                           <Text style={styles.groupDetailItemsSummary}>
                             📖 {group.book_count} {group.book_name || 'Book'} • 🖊️ {group.pen_count} {group.pen_name || 'Pen'} • 📄 {group.paper_count} {group.paper_name || 'Paper'}
                           </Text>
                         )}
                       </View>
-
-                      <TouchableOpacity
-                        style={styles.groupDetailItemsBtn}
-                        onPress={() => {
-                          if (round.status === 'LOCKED') {
-                            setShowUnlockConfirm(true);
-                          } else {
-                            setSelectedGroupForItems(group);
-                          }
-                        }}
-                      >
-                        <Ionicons
-                          name={round.status === 'LOCKED' ? 'lock-closed' : 'pricetag'}
-                          size={12}
-                          color={COLORS.primary}
-                        />
-                        <Text style={styles.groupDetailItemsBtnText}>
-                          {round.status === 'LOCKED'
-                            ? `+${group.items_bonus} pts`
-                            : group.items_bonus > 0
-                            ? `Edit (+${group.items_bonus})`
-                            : '+ Add Items'}
-                        </Text>
-                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
@@ -304,17 +306,17 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
             onCancel={() => setShowUnlockConfirm(false)}
           />
 
-          {/* Edit Score Modal */}
-          {scoringMember && (
+          {/* Edit Group Score Modal */}
+          {scoringGroup && (
             <ScoreModal
-              visible={Boolean(scoringMember)}
-              title="Edit Round Score"
+              visible={Boolean(scoringGroup)}
+              title="Edit Group Score"
               subtitle={`Round: ${formatDateDisplay(round.round_date)}`}
-              playerName={scoringMember.player_name}
-              playerNumber={scoringMember.player_number}
-              currentScore={scoringMember.round_score}
-              onSave={handleSaveScore}
-              onClose={() => setScoringMember(null)}
+              groupNumber={scoringGroup.group_number}
+              groupName={scoringGroup.name}
+              currentScore={scoringGroup.quiz_score ?? 0}
+              onSave={handleSaveGroupScore}
+              onClose={() => setScoringGroup(null)}
             />
           )}
 
@@ -477,6 +479,31 @@ const styles = StyleSheet.create({
   groupDetailBreakdown: {
     flex: 1,
     marginRight: 8,
+  },
+  groupDetailScoreControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  groupDetailQuizBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.primaryLight,
+    borderRadius: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    gap: 4,
+  },
+  groupDetailQuizBadgeActive: {
+    backgroundColor: 'rgba(79, 70, 229, 0.08)',
+  },
+  groupDetailQuizText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
   groupDetailBreakdownText: {
     fontSize: 12,

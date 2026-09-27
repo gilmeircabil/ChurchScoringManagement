@@ -1,5 +1,5 @@
 import { IDatabaseConnection } from '../database/types';
-import { Score, PlayerWithStats } from '../types';
+import { Score, PlayerWithStats, Group } from '../types';
 import { generateId } from '../utils/idGenerator';
 
 export class ScoreRepository {
@@ -65,6 +65,109 @@ export class ScoreRepository {
           now,
           now
         );
+      }
+
+      // Synchronize group quiz_score if player belongs to a group
+      const groupMember = await this.db.getFirstAsync<{ group_id: string }>(
+        'SELECT group_id FROM group_members WHERE round_id = ? AND player_id = ?',
+        roundId,
+        playerId
+      );
+      if (groupMember) {
+        const sumRow = await this.db.getFirstAsync<{ total: number }>(
+          `SELECT COALESCE(SUM(s.points), 0) as total
+           FROM group_members gm
+           JOIN scores s ON s.round_id = gm.round_id AND s.player_id = gm.player_id
+           WHERE gm.round_id = ? AND gm.group_id = ?`,
+          roundId,
+          groupMember.group_id
+        );
+        await this.db.runAsync(
+          'UPDATE groups SET quiz_score = ? WHERE id = ?',
+          sumRow?.total ?? 0,
+          groupMember.group_id
+        );
+      }
+    });
+  }
+
+  /**
+   * Sets or updates the quiz score for an entire group in a specific round.
+   * Updates the group's quiz_score and synchronizes all group members' scores in this round.
+   */
+  async saveGroupScore(roundId: string, groupId: string, points: number): Promise<void> {
+    const now = new Date().toISOString();
+
+    await this.db.withTransactionAsync(async () => {
+      const round = await this.db.getFirstAsync<{ status: string }>(
+        'SELECT status FROM rounds WHERE id = ?',
+        roundId
+      );
+
+      if (!round) {
+        throw new Error('Round not found.');
+      }
+      if (round.status === 'LOCKED') {
+        throw new Error('This round is locked. Unlock the round before making changes.');
+      }
+      if (round.status !== 'ACTIVE') {
+        throw new Error('This round has not started. Start the round before recording scores.');
+      }
+
+      // Update group quiz_score
+      await this.db.runAsync(
+        'UPDATE groups SET quiz_score = ? WHERE id = ?',
+        points,
+        groupId
+      );
+
+      // Get group items bonus so carry total is added to player as well
+      const group = await this.db.getFirstAsync<Group>(
+        'SELECT * FROM groups WHERE id = ?',
+        groupId
+      );
+      const bCount = group?.book_count ?? 0;
+      const pCount = group?.pen_count ?? 0;
+      const paCount = group?.paper_count ?? 0;
+      const bPts = group?.book_points ?? 10;
+      const pPts = group?.pen_points ?? 5;
+      const paPts = group?.paper_points ?? 5;
+      const itemsBonus = bCount * bPts + pCount * pPts + paCount * paPts;
+      const totalPoints = points + itemsBonus;
+
+      // Synchronize all members assigned to this group in this round
+      const members = await this.db.getAllAsync<{ player_id: string }>(
+        'SELECT player_id FROM group_members WHERE round_id = ? AND group_id = ?',
+        roundId,
+        groupId
+      );
+
+      for (const m of members) {
+        const existing = await this.db.getFirstAsync<Score>(
+          'SELECT id FROM scores WHERE round_id = ? AND player_id = ?',
+          roundId,
+          m.player_id
+        );
+
+        if (existing) {
+          await this.db.runAsync(
+            'UPDATE scores SET points = ?, updated_at = ? WHERE id = ?',
+            totalPoints,
+            now,
+            existing.id
+          );
+        } else {
+          const id = generateId();
+          await this.db.runAsync(
+            'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+            id,
+            roundId,
+            m.player_id,
+            totalPoints,
+            now,
+            now
+          );
+        }
       }
     });
   }

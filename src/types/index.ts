@@ -24,6 +24,7 @@ export interface Group {
   round_id: string;
   group_number: number;
   name?: string | null;
+  quiz_score?: number;
   book_count?: number;
   pen_count?: number;
   paper_count?: number;

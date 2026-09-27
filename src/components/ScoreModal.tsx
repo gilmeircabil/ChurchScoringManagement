@@ -19,8 +19,10 @@ import { validateScore } from '../utils/validation';
 
 interface ScoreModalProps {
   visible: boolean;
-  playerName: string;
-  playerNumber: number;
+  playerName?: string;
+  playerNumber?: number;
+  groupName?: string | null;
+  groupNumber?: number;
   currentScore: number;
   title?: string;
   subtitle?: string;
@@ -32,6 +34,8 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({
   visible,
   playerName,
   playerNumber,
+  groupName,
+  groupNumber,
   currentScore,
   title,
   subtitle,
@@ -108,12 +112,23 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <View style={styles.playerInfoRow}>
-            <Text style={styles.playerName} numberOfLines={1}>
-              {playerName}
-            </Text>
-            <PlayerIdBadge playerNumber={playerNumber} />
-          </View>
+          {groupNumber !== undefined ? (
+            <View style={styles.playerInfoRow}>
+              <View style={styles.groupModalBadge}>
+                <Text style={styles.groupModalBadgeText}>{groupNumber}</Text>
+              </View>
+              <Text style={styles.playerName} numberOfLines={1}>
+                {groupName ? `GROUP ${groupNumber} — ${groupName}` : `GROUP ${groupNumber}`}
+              </Text>
+            </View>
+          ) : playerName ? (
+            <View style={styles.playerInfoRow}>
+              <Text style={styles.playerName} numberOfLines={1}>
+                {playerName}
+              </Text>
+              {playerNumber !== undefined && <PlayerIdBadge playerNumber={playerNumber} />}
+            </View>
+          ) : null}
 
           <Text style={styles.label}>Points</Text>
           <View style={styles.inputContainer}>
@@ -297,6 +312,20 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+  },
+  groupModalBadge: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: COLORS.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  groupModalBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
   },
   playerName: {
     fontSize: 17,

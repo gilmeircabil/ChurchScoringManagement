@@ -25,10 +25,9 @@ import { ConfirmationModal } from '../components/ConfirmationModal';
 import { UnassignedListModal } from '../components/UnassignedListModal';
 import { RoundStatusBadge } from '../components/RoundStatusBadge';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
-import { PendingScorePlaceholder } from '../components/PendingScorePlaceholder';
 import { SearchBar } from '../components/SearchBar';
 import { getQuizService } from '../services/quizService';
-import { Round, Group, GroupDetail, AssignedMember, Player, MainTab } from '../types';
+import { Round, Group, GroupDetail, Player, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 import { APP_CONFIG } from '../constants/config';
 import { formatDateDisplay, getTodayISODate, pluralize } from '../utils/formatters';
@@ -75,8 +74,8 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
 
   const [isUnassignedModalVisible, setIsUnassignedModalVisible] = useState(false);
 
-  // Scoring Modal
-  const [scoringMember, setScoringMember] = useState<AssignedMember | null>(null);
+  // Group Scoring Modal
+  const [scoringGroup, setScoringGroup] = useState<GroupDetail | null>(null);
 
   // Group Items Carry Bonus Modal
   const [selectedGroupForItems, setSelectedGroupForItems] = useState<GroupDetail | null>(null);
@@ -317,27 +316,27 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     }
   };
 
-  // Save Score
-  const handleSaveScore = async (points: number) => {
-    if (!round || !scoringMember) return;
+  // Save Group Quiz Score
+  const handleSaveGroupScore = async (points: number) => {
+    if (!round || !scoringGroup) return;
     if (round.status !== 'ACTIVE') return;
     try {
       const service = await getQuizService();
-      await service.scores.saveScore(round.id, scoringMember.player_id, points);
+      await service.scores.saveGroupScore(round.id, scoringGroup.id, points);
       if (Platform.OS !== 'web') {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
-      setScoringMember(null);
+      setScoringGroup(null);
       loadRoundData(round.id);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Unable to save score.');
+      Alert.alert('Error', err.message || 'Unable to save group score.');
     }
   };
 
-  // Quick Stepper for round score (+5, -5)
-  const handleQuickStepScore = async (member: AssignedMember, delta: number) => {
+  // Quick Stepper for group quiz score (+5, -5)
+  const handleQuickStepGroupScore = async (group: GroupDetail, delta: number) => {
     if (!round || round.status !== 'ACTIVE') return;
-    const currentScore = member.round_score || 0;
+    const currentScore = group.quiz_score || 0;
     const newScore = Math.max(0, currentScore + delta);
     if (newScore === currentScore && delta < 0) return;
 
@@ -347,21 +346,25 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
 
     // Optimistically update groupDetails state for instant UI feedback
     setGroupDetails((prev) =>
-      prev.map((g) => ({
-        ...g,
-        members: g.members.map((m) =>
-          m.player_id === member.player_id ? { ...m, round_score: newScore } : m
-        ),
-      }))
+      prev.map((g) =>
+        g.id === group.id
+          ? {
+              ...g,
+              quiz_score: newScore,
+              total_score: newScore + g.items_bonus,
+              members: g.members.map((m) => ({ ...m, round_score: newScore + g.items_bonus })),
+            }
+          : g
+      )
     );
 
     try {
       const service = await getQuizService();
-      await service.scores.saveScore(round.id, member.player_id, newScore);
+      await service.scores.saveGroupScore(round.id, group.id, newScore);
       loadRoundData(round.id);
     } catch (err: any) {
       loadRoundData(round.id);
-      Alert.alert('Error', err.message || 'Unable to update score.');
+      Alert.alert('Error', err.message || 'Unable to update group score.');
     }
   };
 
@@ -655,49 +658,24 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
                         <PlayerIdBadge playerNumber={member.player_number} />
                       </TouchableOpacity>
 
-                      {/* SCORING CONTROLS — ONLY WHILE THE ROUND IS ACTIVE */}
-                      {isActive ? (
-                        <View style={styles.scoreActionRow}>
-                          <TouchableOpacity
-                            style={styles.stepperButton}
-                            onPress={() => handleQuickStepScore(member, -5)}
-                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                            accessibilityLabel="Subtract 5 points"
-                          >
-                            <Ionicons name="remove" size={14} color={COLORS.textSecondary} />
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.scorePill}
-                            onPress={() => setScoringMember(member)}
-                            activeOpacity={0.7}
-                            accessibilityLabel={`Score: ${member.round_score} points. Tap to edit`}
-                          >
-                            <Text style={styles.scorePillValue}>{member.round_score}</Text>
-                            <Text style={styles.scorePillLabel}>pts</Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.stepperButton}
-                            onPress={() => handleQuickStepScore(member, 5)}
-                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                            accessibilityLabel="Add 5 points"
-                          >
-                            <Ionicons name="add" size={14} color={COLORS.primary} />
-                          </TouchableOpacity>
-                        </View>
-                      ) : isLocked ? (
+                      {!isLocked && (
                         <TouchableOpacity
-                          style={styles.lockedScoreBadge}
-                          onPress={() => setIsUnlockConfirmVisible(true)}
-                          activeOpacity={0.7}
-                          accessibilityLabel="Score locked. Tap to unlock round"
+                          style={styles.memberMoveButton}
+                          onPress={() =>
+                            handlePlayerTap({
+                              id: member.player_id,
+                              name: member.player_name,
+                              player_number: member.player_number,
+                              active: 1,
+                              created_at: '',
+                              updated_at: '',
+                            })
+                          }
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          accessibilityLabel={`Move or remove ${member.player_name}`}
                         >
-                          <Ionicons name="lock-closed" size={11} color={COLORS.onSecondaryContainer} style={{ marginRight: 4 }} />
-                          <Text style={styles.lockedScoreText}>+{member.round_score}</Text>
+                          <Ionicons name="swap-horizontal" size={16} color={COLORS.textSecondary} />
                         </TouchableOpacity>
-                      ) : (
-                        <PendingScorePlaceholder />
                       )}
                     </View>
                   ))}
@@ -707,40 +685,84 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
               {/* GROUP SCORE & ITEMS BONUS FOOTER */}
               {(isActive || isLocked) && (
                 <View style={styles.groupScoreFooter}>
-                  <View style={styles.groupScoreBreakdown}>
-                    <Text style={styles.groupBreakdownText}>
-                      Quiz: <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{group.quiz_score} pts</Text>
-                      {'  '}•{'  '}
-                      Items Bonus: <Text style={{ fontWeight: '700', color: group.items_bonus > 0 ? COLORS.success : COLORS.textSecondary }}>+{group.items_bonus} pts</Text>
-                    </Text>
-                    {group.items_bonus > 0 && (
-                      <Text style={styles.groupItemsCarryDetail}>
-                        📖 {group.book_count} {group.book_name || 'Book'}{group.book_count !== 1 ? 's' : ''} ({group.book_count * group.book_points} pts) • 🖊️ {group.pen_count} {group.pen_name || 'Pen'}{group.pen_count !== 1 ? 's' : ''} ({group.pen_count * group.pen_points} pts) • 📄 {group.paper_count} {group.paper_name || 'Paper'}{group.paper_count !== 1 ? 's' : ''} ({group.paper_count * group.paper_points} pts)
-                      </Text>
-                    )}
-                  </View>
-
                   {isActive ? (
-                    <TouchableOpacity
-                      style={[styles.itemsBonusButton, group.items_bonus > 0 && styles.itemsBonusButtonActive]}
-                      onPress={() => setSelectedGroupForItems(group)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons
-                        name={group.items_bonus > 0 ? 'checkmark-circle' : 'add-circle-outline'}
-                        size={15}
-                        color={group.items_bonus > 0 ? COLORS.success : COLORS.primary}
-                      />
-                      <Text
+                    <View style={styles.groupScoringRow}>
+                      {/* QUIZ SCORE STEPPER FOR GROUP */}
+                      <View style={styles.groupQuizScoreSection}>
+                        <Text style={styles.groupScoringSectionLabel}>Quiz Score</Text>
+                        <View style={styles.groupScoreActionRow}>
+                          <TouchableOpacity
+                            style={styles.stepperButton}
+                            onPress={() => handleQuickStepGroupScore(group, -5)}
+                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                            accessibilityLabel="Subtract 5 points from group"
+                          >
+                            <Ionicons name="remove" size={14} color={COLORS.textSecondary} />
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.scorePill}
+                            onPress={() => setScoringGroup(group)}
+                            activeOpacity={0.7}
+                            accessibilityLabel={`Group quiz score: ${group.quiz_score ?? 0} points. Tap to edit`}
+                          >
+                            <Text style={styles.scorePillValue}>{group.quiz_score ?? 0}</Text>
+                            <Text style={styles.scorePillLabel}>pts</Text>
+                          </TouchableOpacity>
+
+                          <TouchableOpacity
+                            style={styles.stepperButton}
+                            onPress={() => handleQuickStepGroupScore(group, 5)}
+                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
+                            accessibilityLabel="Add 5 points to group"
+                          >
+                            <Ionicons name="add" size={14} color={COLORS.primary} />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      {/* ITEMS BONUS BUTTON */}
+                      <TouchableOpacity
                         style={[
-                          styles.itemsBonusButtonText,
-                          group.items_bonus > 0 && styles.itemsBonusButtonTextActive,
+                          styles.itemsBonusButton,
+                          group.items_bonus > 0 && styles.itemsBonusButtonActive,
                         ]}
+                        onPress={() => setSelectedGroupForItems(group)}
+                        activeOpacity={0.7}
                       >
-                        {group.items_bonus > 0 ? `Edit Items (+${group.items_bonus} pts)` : '+ Add Items Carry'}
+                        <Ionicons
+                          name={group.items_bonus > 0 ? 'checkmark-circle' : 'add-circle-outline'}
+                          size={15}
+                          color={group.items_bonus > 0 ? COLORS.success : COLORS.primary}
+                        />
+                        <Text
+                          style={[
+                            styles.itemsBonusButtonText,
+                            group.items_bonus > 0 && styles.itemsBonusButtonTextActive,
+                          ]}
+                        >
+                          {group.items_bonus > 0 ? `Items (+${group.items_bonus} pts)` : '+ Add Items Carry'}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    /* Locked View */
+                    <View style={styles.groupScoreBreakdown}>
+                      <Text style={styles.groupBreakdownText}>
+                        Quiz: <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{group.quiz_score ?? 0} pts</Text>
+                        {'  '}•{'  '}
+                        Items Bonus: <Text style={{ fontWeight: '700', color: group.items_bonus > 0 ? COLORS.success : COLORS.textSecondary }}>+{group.items_bonus} pts</Text>
                       </Text>
-                    </TouchableOpacity>
-                  ) : isLocked ? (
+                    </View>
+                  )}
+
+                  {group.items_bonus > 0 && (
+                    <Text style={styles.groupItemsCarryDetail}>
+                      📖 {group.book_count} {group.book_name || 'Book'}{group.book_count !== 1 ? 's' : ''} ({group.book_count * group.book_points} pts) • 🖊️ {group.pen_count} {group.pen_name || 'Pen'}{group.pen_count !== 1 ? 's' : ''} ({group.pen_count * group.pen_points} pts) • 📄 {group.paper_count} {group.paper_name || 'Paper'}{group.paper_count !== 1 ? 's' : ''} ({group.paper_count * group.paper_points} pts)
+                    </Text>
+                  )}
+
+                  {isLocked && (
                     <TouchableOpacity
                       style={styles.itemsBonusButtonLocked}
                       onPress={() => setSelectedGroupForItems(group)}
@@ -751,7 +773,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
                         Items: +{group.items_bonus} pts
                       </Text>
                     </TouchableOpacity>
-                  ) : null}
+                  )}
                 </View>
               )}
             </View>
@@ -847,15 +869,16 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
         onClose={() => setIsUnassignedModalVisible(false)}
       />
 
-      {/* SCORE ENTRY MODAL */}
-      {scoringMember && (
+      {/* GROUP SCORE ENTRY MODAL */}
+      {scoringGroup && (
         <ScoreModal
-          visible={Boolean(scoringMember)}
-          playerName={scoringMember.player_name}
-          playerNumber={scoringMember.player_number}
-          currentScore={scoringMember.round_score}
-          onSave={handleSaveScore}
-          onClose={() => setScoringMember(null)}
+          visible={Boolean(scoringGroup)}
+          title="Enter Group Score"
+          groupNumber={scoringGroup.group_number}
+          groupName={scoringGroup.name}
+          currentScore={scoringGroup.quiz_score ?? 0}
+          onSave={handleSaveGroupScore}
+          onClose={() => setScoringGroup(null)}
         />
       )}
 
@@ -1174,6 +1197,37 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginRight: 8,
     flexShrink: 1,
+  },
+  memberMoveButton: {
+    padding: 6,
+    borderRadius: 6,
+    backgroundColor: COLORS.surfaceVariant,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  groupScoringRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  groupQuizScoreSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  groupScoringSectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  groupScoreActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
   },
   scoreActionRow: {
     flexDirection: 'row',

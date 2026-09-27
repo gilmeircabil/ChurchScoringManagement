@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS groups (
     round_id TEXT NOT NULL,
     group_number INTEGER NOT NULL,
     name TEXT,
+    quiz_score INTEGER NOT NULL DEFAULT 0,
     book_count INTEGER NOT NULL DEFAULT 0,
     pen_count INTEGER NOT NULL DEFAULT 0,
     paper_count INTEGER NOT NULL DEFAULT 0,
@@ -128,5 +129,8 @@ export async function initializeDatabase(db: IDatabaseConnection): Promise<void>
   } catch {}
   try {
     await db.execAsync("ALTER TABLE groups ADD COLUMN paper_name TEXT NOT NULL DEFAULT 'Paper';");
+  } catch {}
+  try {
+    await db.execAsync('ALTER TABLE groups ADD COLUMN quiz_score INTEGER NOT NULL DEFAULT 0;');
   } catch {}
 }
