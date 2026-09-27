@@ -13,6 +13,9 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { ScoreModal } from '../components/ScoreModal';
@@ -216,6 +219,9 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     try {
       const service = await getQuizService();
       await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
       loadRoundData(round.id);
     } catch (_err) {
       Alert.alert('Error', 'Unable to start round.');
@@ -228,6 +234,9 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     try {
       const service = await getQuizService();
       await service.rounds.updateRoundStatus(round.id, 'LOCKED');
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
       setIsLockConfirmVisible(false);
       loadRoundData(round.id);
     } catch (_err) {
@@ -241,6 +250,9 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     try {
       const service = await getQuizService();
       await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+      if (Platform.OS !== 'web') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
       setIsUnlockConfirmVisible(false);
       loadRoundData(round.id);
     } catch (_err) {
@@ -255,6 +267,9 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     try {
       const service = await getQuizService();
       await service.scores.saveScore(round.id, scoringMember.player_id, points);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
       setScoringMember(null);
       loadRoundData(round.id);
     } catch (err: any) {
@@ -268,6 +283,10 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     const currentScore = member.round_score || 0;
     const newScore = Math.max(0, currentScore + delta);
     if (newScore === currentScore && delta < 0) return;
+
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
 
     // Optimistically update groupDetails state for instant UI feedback
     setGroupDetails((prev) =>
@@ -335,6 +354,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
         animationType="fade"
         onRequestClose={() => setIsNewRoundModalVisible(false)}
       >
+        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -599,26 +619,52 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
         {/* BOTTOM ACTION BUTTONS */}
         <View style={styles.bottomActions}>
           {isDraft && (
-            <TouchableOpacity style={styles.startRoundButton} onPress={handleStartRound}>
-              <Ionicons name="play" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text style={styles.startRoundButtonText}>Start Round</Text>
+            <TouchableOpacity
+              style={styles.gradientButtonWrapper}
+              onPress={handleStartRound}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={['#059669', '#10B981']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.startRoundButton}
+              >
+                <Ionicons name="play" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.startRoundButtonText}>Start Round</Text>
+              </LinearGradient>
             </TouchableOpacity>
           )}
 
           {isActive && (
             <TouchableOpacity
-              style={styles.lockRoundButton}
-              onPress={() => setIsLockConfirmVisible(true)}
+              style={styles.gradientButtonWrapper}
+              onPress={() => {
+                if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                setIsLockConfirmVisible(true);
+              }}
+              activeOpacity={0.85}
             >
-              <Ionicons name="lock-closed" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-              <Text style={styles.lockRoundButtonText}>Finish & Lock Round</Text>
+              <LinearGradient
+                colors={[COLORS.primary, COLORS.primaryLight]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.lockRoundButton}
+              >
+                <Ionicons name="lock-closed" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
+                <Text style={styles.lockRoundButtonText}>Finish & Lock Round</Text>
+              </LinearGradient>
             </TouchableOpacity>
           )}
 
           {isLocked && (
             <TouchableOpacity
               style={styles.unlockRoundButton}
-              onPress={() => setIsUnlockConfirmVisible(true)}
+              onPress={() => {
+                if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setIsUnlockConfirmVisible(true);
+              }}
+              activeOpacity={0.7}
             >
               <Ionicons name="lock-open-outline" size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
               <Text style={styles.unlockRoundButtonText}>Unlock Round</Text>
@@ -731,7 +777,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 36,
+    paddingBottom: 120,
   },
   statusBarRow: {
     flexDirection: 'row',
@@ -935,9 +981,9 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   stepperButton: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: COLORS.surfaceVariant,
     borderWidth: 1,
     borderColor: COLORS.borderDark,
@@ -947,24 +993,24 @@ const styles = StyleSheet.create({
   scorePill: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    backgroundColor: COLORS.surfaceVariant,
-    borderWidth: 1.5,
-    borderColor: COLORS.borderDark,
-    borderRadius: 8,
-    paddingHorizontal: 7,
-    paddingVertical: 3,
-    minWidth: 44,
+    backgroundColor: 'rgba(79, 70, 229, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(79, 70, 229, 0.2)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    minWidth: 48,
     justifyContent: 'center',
   },
   scorePillValue: {
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
     color: COLORS.primary,
   },
   scorePillLabel: {
     fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
+    fontWeight: '700',
+    color: COLORS.primaryLight,
     marginLeft: 2,
   },
   lockedScoreBadge: {
@@ -983,14 +1029,20 @@ const styles = StyleSheet.create({
   bottomActions: {
     marginTop: 24,
   },
+  gradientButtonWrapper: {
+    borderRadius: 14,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
+  },
   startRoundButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primary,
     paddingVertical: 14,
-    borderRadius: 12,
-    elevation: 3,
+    borderRadius: 14,
   },
   startRoundButtonText: {
     fontSize: 16,
@@ -1001,10 +1053,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.secondary,
     paddingVertical: 14,
-    borderRadius: 12,
-    elevation: 3,
+    borderRadius: 14,
   },
   lockRoundButtonText: {
     fontSize: 16,
@@ -1019,7 +1069,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: COLORS.primary,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: 14,
   },
   unlockRoundButtonText: {
     fontSize: 15,
@@ -1028,7 +1078,6 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -1037,15 +1086,22 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 380,
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
+    borderRadius: 24,
     padding: 24,
-    elevation: 8,
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
   },
   modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: COLORS.textPrimary,
     marginBottom: 16,
+    letterSpacing: -0.3,
   },
   fieldLabel: {
     fontSize: 13,

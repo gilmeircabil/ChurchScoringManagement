@@ -7,12 +7,15 @@ import {
   TouchableOpacity,
   RefreshControl,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { RoundStatusBadge } from '../components/RoundStatusBadge';
-import { PlayerIdBadge } from '../components/PlayerIdBadge';
+import { SlideUp } from '../components/AnimatedComponents';
 import { getQuizService } from '../services/quizService';
 import { Round, PlayerWithStats, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
@@ -96,130 +99,162 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, onOpenSettin
         }
       >
         {/* CURRENT ROUND SECTION */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>CURRENT ROUND</Text>
-          {workingRound && <RoundStatusBadge status={workingRound.status} />}
-        </View>
+        <SlideUp delay={100}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>CURRENT ROUND</Text>
+            {workingRound && <RoundStatusBadge status={workingRound.status} />}
+          </View>
+        </SlideUp>
 
-        {workingRound ? (
-          <View style={styles.card}>
-            <View style={styles.dateRow}>
-              <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
-              <Text style={styles.dateText}>
-                {formatDateDisplay(workingRound.round_date)}
-              </Text>
-            </View>
-
-            {/* Stats Grid */}
-            <View style={styles.statsGrid}>
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{counts.totalPlayers}</Text>
-                <Text style={styles.statLabel}>Total Players</Text>
-              </View>
-
-              <View style={styles.statBox}>
-                <Text style={styles.statValue}>{workingRound.group_count}</Text>
-                <Text style={styles.statLabel}>Groups</Text>
-              </View>
-
-              <View style={styles.statBox}>
-                <Text style={[styles.statValue, { color: COLORS.success }]}>
-                  {counts.assignedCount}
+        <SlideUp delay={200}>
+          {workingRound ? (
+            <View style={styles.card}>
+              <View style={styles.dateRow}>
+                <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
+                <Text style={styles.dateText}>
+                  {formatDateDisplay(workingRound.round_date)}
                 </Text>
-                <Text style={styles.statLabel}>Assigned</Text>
               </View>
 
-              <View style={styles.statBox}>
-                <Text
-                  style={[
-                    styles.statValue,
-                    counts.unassignedCount > 0 && { color: COLORS.warning },
-                  ]}
+              {/* Stats Grid */}
+              <View style={styles.statsGrid}>
+                <View style={styles.statBox}>
+                  <Text style={styles.statValue}>{counts.totalPlayers}</Text>
+                  <Text style={styles.statLabel}>Total Players</Text>
+                </View>
+
+                <View style={styles.statBox}>
+                  <Text style={styles.statValue}>{workingRound.group_count}</Text>
+                  <Text style={styles.statLabel}>Groups</Text>
+                </View>
+
+                <View style={styles.statBox}>
+                  <Text style={[styles.statValue, { color: COLORS.success }]}>
+                    {counts.assignedCount}
+                  </Text>
+                  <Text style={styles.statLabel}>Assigned</Text>
+                </View>
+
+                <View style={styles.statBox}>
+                  <Text
+                    style={[
+                      styles.statValue,
+                      counts.unassignedCount > 0 && { color: COLORS.warning },
+                    ]}
+                  >
+                    {counts.unassignedCount}
+                  </Text>
+                  <Text style={styles.statLabel}>Unassigned</Text>
+                </View>
+              </View>
+
+              {/* Quick Action Buttons */}
+              <View style={styles.actionRow}>
+                <TouchableOpacity
+                  style={styles.secondaryActionButton}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    onNavigate('round');
+                  }}
+                  activeOpacity={0.7}
                 >
-                  {counts.unassignedCount}
-                </Text>
-                <Text style={styles.statLabel}>Unassigned</Text>
+                  <Ionicons name="people-outline" size={18} color={COLORS.primary} />
+                  <Text style={styles.secondaryActionText}>Manage Groups</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  onPress={() => {
+                    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    onNavigate('round');
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <LinearGradient
+                    colors={[COLORS.primary, COLORS.primaryLight]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.primaryActionButton}
+                  >
+                    <Ionicons name="create-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.primaryActionText}>
+                      {workingRound.status === 'ACTIVE' ? 'Enter Scores' : 'Round Screen'}
+                    </Text>
+                  </LinearGradient>
+                </TouchableOpacity>
               </View>
             </View>
-
-            {/* Quick Action Buttons */}
-            <View style={styles.actionRow}>
-              <TouchableOpacity
-                style={styles.secondaryActionButton}
-                onPress={() => onNavigate('round')}
-              >
-                <Ionicons name="people-outline" size={18} color={COLORS.primary} />
-                <Text style={styles.secondaryActionText}>Manage Groups</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.primaryActionButton}
-                onPress={() => onNavigate('round')}
-              >
-                <Ionicons name="create-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.primaryActionText}>
-                  {workingRound.status === 'ACTIVE' ? 'Enter Scores' : 'Round Screen'}
-                </Text>
-              </TouchableOpacity>
+          ) : (
+            <View style={styles.card}>
+              <EmptyState
+                iconName="cube-outline"
+                title="No active round"
+                description="Create a new round to assign players to groups and start scoring."
+                actionText="Create New Round"
+                onActionPress={() => onNavigate('round')}
+              />
             </View>
-          </View>
-        ) : (
-          <View style={styles.card}>
-            <EmptyState
-              iconName="cube-outline"
-              title="No active round"
-              description="Create a new round to assign players to groups and start scoring."
-              actionText="Create New Round"
-              onActionPress={() => onNavigate('round')}
-            />
-          </View>
-        )}
+          )}
+        </SlideUp>
 
         {/* DIVIDER */}
         <View style={styles.divider} />
 
-        {/* CURRENT LEADER SECTION */}
-        <Text style={styles.sectionTitle}>CURRENT LEADER</Text>
+        <SlideUp delay={300}>
+          {/* CURRENT LEADER SECTION */}
+          <Text style={styles.sectionTitle}>CURRENT LEADER</Text>
 
-        {leader && leader.total_score > 0 ? (
-          <View style={styles.leaderCard}>
-            <View style={styles.leaderTrophyCircle}>
-              <Ionicons name="trophy" size={28} color={COLORS.accent} />
-            </View>
-
-            <View style={styles.leaderInfo}>
-              <View style={styles.leaderNameRow}>
-                <Text style={styles.leaderName} numberOfLines={1}>
-                  {leader.name}
-                </Text>
-                <PlayerIdBadge playerNumber={leader.player_number} />
+          {leader && leader.total_score > 0 ? (
+            <LinearGradient
+              colors={[COLORS.primary, COLORS.primaryLight]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.leaderCard}
+            >
+              <View style={styles.leaderTrophyCircle}>
+                <Ionicons name="trophy" size={28} color={COLORS.accent} />
               </View>
-              <Text style={styles.leaderRounds}>
-                {leader.rounds_played} {pluralize(leader.rounds_played, 'round')} played
+
+              <View style={styles.leaderInfo}>
+                <View style={styles.leaderNameRow}>
+                  <Text style={[styles.leaderName, { color: '#FFFFFF' }]} numberOfLines={1}>
+                    {leader.name}
+                  </Text>
+                  <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 12, paddingHorizontal: 6, paddingVertical: 2 }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700' }}>
+                      #{leader.player_number}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={[styles.leaderRounds, { color: 'rgba(255,255,255,0.8)' }]}>
+                  {leader.rounds_played} {pluralize(leader.rounds_played, 'round')} played
+                </Text>
+              </View>
+
+              <View style={styles.leaderScoreBox}>
+                <Text style={[styles.leaderScore, { color: '#FFFFFF' }]}>{leader.total_score}</Text>
+                <Text style={[styles.leaderScoreUnit, { color: 'rgba(255,255,255,0.7)' }]}>Points</Text>
+              </View>
+            </LinearGradient>
+          ) : (
+            <View style={styles.card}>
+              <Text style={styles.noLeaderText}>
+                No scores recorded yet. Complete a round to see the leader!
               </Text>
             </View>
+          )}
+        </SlideUp>
 
-            <View style={styles.leaderScoreBox}>
-              <Text style={styles.leaderScore}>{leader.total_score}</Text>
-              <Text style={styles.leaderScoreUnit}>Points</Text>
-            </View>
-          </View>
-        ) : (
-          <View style={styles.card}>
-            <Text style={styles.noLeaderText}>
-              No scores recorded yet. Complete a round to see the leader!
-            </Text>
-          </View>
-        )}
-
-        <TouchableOpacity
-          style={styles.viewReportsButton}
-          onPress={() => onNavigate('reports')}
-        >
-          <Ionicons name="stats-chart" size={18} color={COLORS.primary} />
-          <Text style={styles.viewReportsText}>View Full Reports & Rankings</Text>
-          <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
-        </TouchableOpacity>
+        <SlideUp delay={400}>
+          <TouchableOpacity
+            style={styles.viewReportsButton}
+            onPress={() => onNavigate('reports')}
+          >
+            <Ionicons name="stats-chart" size={18} color={COLORS.primary} />
+            <Text style={styles.viewReportsText}>View Full Reports & Rankings</Text>
+            <Ionicons name="chevron-forward" size={18} color={COLORS.primary} />
+          </TouchableOpacity>
+        </SlideUp>
       </ScrollView>
     </View>
   );
@@ -241,7 +276,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: 16,
-    paddingBottom: 32,
+    paddingBottom: 120, // Increased for floating tab bar
   },
   sectionHeaderRow: {
     flexDirection: 'row',
@@ -324,11 +359,9 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
   },
   primaryActionButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primary,
     paddingVertical: 12,
     borderRadius: 8,
     gap: 6,

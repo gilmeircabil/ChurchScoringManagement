@@ -1,6 +1,8 @@
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/colors';
 
 interface ConfirmationModalProps {
@@ -32,8 +34,27 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 }) => {
   const resolvedColor = iconColor || (isDestructive ? COLORS.danger : COLORS.primary);
 
+  const handleConfirm = () => {
+    if (Platform.OS !== 'web') {
+      if (isDestructive) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      } else {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
+    }
+    onConfirm();
+  };
+
+  const handleCancel = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onCancel();
+  };
+
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+      <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={styles.overlay}>
         <View style={styles.dialog}>
           <View style={[styles.iconWrapper, { backgroundColor: isDestructive ? COLORS.dangerContainer : COLORS.primaryContainer }]}>
@@ -45,7 +66,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           {subMessage ? <Text style={styles.subMessage}>{subMessage}</Text> : null}
 
           <View style={styles.footerRow}>
-            <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
+            <TouchableOpacity style={styles.cancelButton} onPress={handleCancel} activeOpacity={0.7}>
               <Text style={styles.cancelButtonText}>{cancelText}</Text>
             </TouchableOpacity>
 
@@ -54,7 +75,8 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
                 styles.confirmButton,
                 isDestructive ? styles.confirmButtonDestructive : styles.confirmButtonPrimary,
               ]}
-              onPress={onConfirm}
+              onPress={handleConfirm}
+              activeOpacity={0.85}
             >
               <Text style={styles.confirmButtonText}>{confirmText}</Text>
             </TouchableOpacity>
@@ -68,7 +90,6 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -77,36 +98,39 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 360,
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 22,
+    borderRadius: 24,
+    padding: 24,
     alignItems: 'center',
-    elevation: 8,
+    elevation: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
   },
   iconWrapper: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 14,
+    marginBottom: 16,
   },
   title: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: COLORS.textPrimary,
     marginBottom: 8,
     textAlign: 'center',
+    letterSpacing: -0.3,
   },
   message: {
     fontSize: 14,
     color: COLORS.textPrimary,
     textAlign: 'center',
     marginBottom: 4,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   subMessage: {
     fontSize: 13,
@@ -120,24 +144,26 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     width: '100%',
     gap: 12,
-    marginTop: 18,
+    marginTop: 20,
   },
   cancelButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
     backgroundColor: COLORS.surfaceVariant,
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
   },
   cancelButtonText: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.textSecondary,
   },
   confirmButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 13,
+    borderRadius: 12,
     alignItems: 'center',
   },
   confirmButtonPrimary: {

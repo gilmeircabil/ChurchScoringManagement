@@ -1,4 +1,5 @@
 import React from 'react';
+import { BlurView } from 'expo-blur';
 import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
@@ -22,6 +23,7 @@ export const DuplicateConfirmModal: React.FC<DuplicateConfirmModalProps> = ({
 }) => {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={styles.overlay}>
         <View style={styles.dialog}>
           <View style={styles.iconCircle}>
@@ -64,7 +66,7 @@ export const DuplicateConfirmModal: React.FC<DuplicateConfirmModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,

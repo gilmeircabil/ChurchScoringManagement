@@ -14,6 +14,7 @@ import { EmptyState } from '../components/EmptyState';
 import { DestructiveConfirmModal } from '../components/DestructiveConfirmModal';
 import { RoundStatusBadge } from '../components/RoundStatusBadge';
 import { StatusBanner, StatusMessage } from '../components/StatusBanner';
+import { SlideUp } from '../components/AnimatedComponents';
 import { RoundDetailModal } from './RoundDetailModal';
 import { getQuizService } from '../services/quizService';
 import { RoundHistoryItem, Round, MainTab } from '../types';
@@ -157,32 +158,34 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
           }
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             return (
-              <TouchableOpacity
-                style={styles.roundCard}
-                onPress={() => handleRoundPress(item)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.cardHeader}>
-                  <Text style={styles.roundDate}>{formatDateDisplay(item.round_date)}</Text>
-                  <RoundStatusBadge status={item.status} />
-                </View>
-
-                <View style={styles.cardDetailsRow}>
-                  <View style={styles.detailItem}>
-                    <Ionicons name="people-outline" size={16} color={COLORS.textSecondary} />
-                    <Text style={styles.detailText}>
-                      {item.assigned_count} Assigned Players
-                    </Text>
+              <SlideUp delay={Math.min(index * 50, 500)}>
+                <TouchableOpacity
+                  style={styles.roundCard}
+                  onPress={() => handleRoundPress(item)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.cardHeader}>
+                    <Text style={styles.roundDate}>{formatDateDisplay(item.round_date)}</Text>
+                    <RoundStatusBadge status={item.status} />
                   </View>
 
-                  <View style={styles.detailItem}>
-                    <Ionicons name="grid-outline" size={16} color={COLORS.textSecondary} />
-                    <Text style={styles.detailText}>{item.group_count} Groups</Text>
+                  <View style={styles.cardDetailsRow}>
+                    <View style={styles.detailItem}>
+                      <Ionicons name="people-outline" size={16} color={COLORS.textSecondary} />
+                      <Text style={styles.detailText}>
+                        {item.assigned_count} Assigned Players
+                      </Text>
+                    </View>
+
+                    <View style={styles.detailItem}>
+                      <Ionicons name="grid-outline" size={16} color={COLORS.textSecondary} />
+                      <Text style={styles.detailText}>{item.group_count} Groups</Text>
+                    </View>
                   </View>
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
+              </SlideUp>
             );
           }}
         />
@@ -227,7 +230,7 @@ const styles = StyleSheet.create({
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
   actionBar: {
     paddingHorizontal: 16,
@@ -252,6 +255,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
+    paddingBottom: 120,
     gap: 12,
   },
   roundCard: {

@@ -1,6 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/colors';
 
 interface EmptyStateProps {
@@ -18,16 +20,34 @@ export const EmptyState: React.FC<EmptyStateProps> = ({
   actionText,
   onActionPress,
 }) => {
+  const handlePress = () => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onActionPress?.();
+  };
+
   return (
     <View style={styles.container}>
-      <View style={styles.iconCircle}>
-        <Ionicons name={iconName} size={40} color={COLORS.primary} />
-      </View>
+      <LinearGradient
+        colors={['#EEF2FF', '#E0E7FF']}
+        style={styles.iconCircle}
+      >
+        <Ionicons name={iconName} size={38} color={COLORS.primary} />
+      </LinearGradient>
       <Text style={styles.title}>{title}</Text>
       {description && <Text style={styles.description}>{description}</Text>}
       {actionText && onActionPress && (
-        <TouchableOpacity style={styles.actionButton} onPress={onActionPress} activeOpacity={0.8}>
-          <Text style={styles.actionText}>{actionText}</Text>
+        <TouchableOpacity style={styles.touchable} onPress={handlePress} activeOpacity={0.85}>
+          <LinearGradient
+            colors={[COLORS.primary, COLORS.primaryLight]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.actionButton}
+          >
+            <Ionicons name="add-circle-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
+            <Text style={styles.actionText}>{actionText}</Text>
+          </LinearGradient>
         </TouchableOpacity>
       )}
     </View>
@@ -41,39 +61,51 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   iconCircle: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: COLORS.primaryContainer,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
+    marginBottom: 18,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    elevation: 4,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
   },
   title: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: COLORS.textPrimary,
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
+    letterSpacing: -0.2,
   },
   description: {
     fontSize: 14,
     color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 20,
-    maxWidth: 280,
-    marginBottom: 20,
+    lineHeight: 22,
+    maxWidth: 290,
+    marginBottom: 22,
+  },
+  touchable: {
+    borderRadius: 12,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
   actionButton: {
-    backgroundColor: COLORS.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 12,
     paddingHorizontal: 24,
-    borderRadius: 10,
-    elevation: 2,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
+    borderRadius: 12,
   },
   actionText: {
     color: '#FFFFFF',

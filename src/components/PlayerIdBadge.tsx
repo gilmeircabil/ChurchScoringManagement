@@ -20,23 +20,25 @@ export const PlayerIdBadge: React.FC<PlayerIdBadgeProps> = ({ playerNumber, size
 
 const styles = StyleSheet.create({
   badge: {
-    backgroundColor: COLORS.surfaceVariant,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    backgroundColor: 'rgba(79, 70, 229, 0.08)',
+    paddingHorizontal: 8,
+    paddingVertical: 2.5,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: COLORS.borderDark,
+    borderColor: 'rgba(79, 70, 229, 0.18)',
+    alignSelf: 'center',
   },
   badgeMd: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 14,
   },
   label: {
     fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
+    fontWeight: '800',
+    color: COLORS.primary,
     fontVariant: ['tabular-nums'],
+    letterSpacing: 0.2,
   },
   labelMd: {
     fontSize: 12,

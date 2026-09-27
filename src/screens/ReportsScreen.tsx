@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
+import { SlideUp } from '../components/AnimatedComponents';
 import { getQuizService } from '../services/quizService';
 import { ReportItem, Round, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
@@ -171,11 +172,12 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
           data={reportItems}
           keyExtractor={(item) => item.player_id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const isTop3 = item.rank <= 3;
             return (
-              <View style={[styles.rankCard, isTop3 && styles.rankCardTop]}>
-                {/* Rank Badge */}
+              <SlideUp delay={Math.min(index * 50, 500)}>
+                <View style={[styles.rankCard, isTop3 && styles.rankCardTop]}>
+                  {/* Rank Badge */}
                 <View
                   style={[
                     styles.rankBadge,
@@ -210,6 +212,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
                   <Text style={styles.scoreUnit}>pts</Text>
                 </View>
               </View>
+            </SlideUp>
             );
           }}
         />
@@ -307,10 +310,11 @@ const styles = StyleSheet.create({
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
-    paddingBottom: 40,
+    paddingBottom: 120,
   },
   listContent: {
     padding: 16,
+    paddingBottom: 120,
     gap: 8,
   },
   rankCard: {

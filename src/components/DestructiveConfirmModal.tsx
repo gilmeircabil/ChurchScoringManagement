@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BlurView } from 'expo-blur';
 import { Modal, View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/colors';
@@ -41,6 +42,7 @@ export const DestructiveConfirmModal: React.FC<DestructiveConfirmModalProps> = (
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel}>
+        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.overlay}>
         <View style={styles.dialog}>
           <View style={styles.iconContainer}>
@@ -87,7 +89,7 @@ export const DestructiveConfirmModal: React.FC<DestructiveConfirmModalProps> = (
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
+    
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,

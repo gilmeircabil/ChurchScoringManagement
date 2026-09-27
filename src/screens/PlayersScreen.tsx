@@ -12,10 +12,13 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { DuplicateConfirmModal } from '../components/DuplicateConfirmModal';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
+import { SlideUp } from '../components/AnimatedComponents';
 import { PlayerDetailModal } from './PlayerDetailModal';
 import { getQuizService } from '../services/quizService';
 import { Player, PlayerWithStats, MainTab } from '../types';
@@ -90,6 +93,9 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
       }
 
       await service.players.createPlayer(validation.trimmedName, scoreValidation.points);
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
       setNewPlayerName('');
       setNewPlayerScore('0');
       setAddError(null);
@@ -179,27 +185,34 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
           data={players}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.playerCard}
-              onPress={() => setSelectedPlayer(item)}
-              activeOpacity={0.7}
-            >
-              <View style={styles.playerInfo}>
-                <Text style={styles.playerName} numberOfLines={1}>
-                  {item.name}
-                </Text>
-                <PlayerIdBadge playerNumber={item.player_number} />
-              </View>
-
-              <View style={styles.cardRight}>
-                <View style={styles.playerScoreBadge}>
-                  <Text style={styles.playerScoreValue}>{item.total_score}</Text>
-                  <Text style={styles.playerScoreUnit}>pts</Text>
+          renderItem={({ item, index }) => (
+            <SlideUp delay={Math.min(index * 50, 500)}>
+              <TouchableOpacity
+                style={styles.playerCard}
+                onPress={() => {
+                  if (Platform.OS !== 'web') {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  }
+                  setSelectedPlayer(item);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.playerInfo}>
+                  <Text style={styles.playerName} numberOfLines={1}>
+                    {item.name}
+                  </Text>
+                  <PlayerIdBadge playerNumber={item.player_number} />
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
-              </View>
-            </TouchableOpacity>
+
+                <View style={styles.cardRight}>
+                  <View style={styles.playerScoreBadge}>
+                    <Text style={styles.playerScoreValue}>{item.total_score}</Text>
+                    <Text style={styles.playerScoreUnit}>pts</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={18} color={COLORS.textMuted} />
+                </View>
+              </TouchableOpacity>
+            </SlideUp>
           )}
         />
       )}
@@ -211,6 +224,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
         animationType="fade"
         onRequestClose={() => setIsAddModalVisible(false)}
       >
+        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
         <KeyboardAvoidingView
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -374,11 +388,12 @@ const styles = StyleSheet.create({
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
-    paddingBottom: 60,
+    paddingBottom: 120, // For floating tab bar
   },
   listContent: {
     padding: 16,
     paddingTop: 8,
+    paddingBottom: 120, // For floating tab bar
     gap: 8,
   },
   playerCard: {
@@ -436,7 +451,6 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,

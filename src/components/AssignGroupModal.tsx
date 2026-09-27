@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import { Group } from '../types';
 import { COLORS } from '../constants/colors';
 import { PlayerIdBadge } from './PlayerIdBadge';
@@ -53,6 +54,7 @@ export const AssignGroupModal: React.FC<AssignGroupModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={styles.overlay}>
         <View style={styles.dialog}>
           <Text style={styles.title}>
@@ -187,7 +189,6 @@ export const AssignGroupModal: React.FC<AssignGroupModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,

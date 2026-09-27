@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { BlurView } from 'expo-blur';
 import {
   Modal,
   View,
@@ -168,8 +169,10 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
       <View style={styles.overlay}>
         <View style={styles.dialog}>
+          <View style={styles.dragHandle} />
           {/* Header */}
           <View style={styles.headerRow}>
             <View style={styles.titleInfo}>
@@ -397,16 +400,31 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'flex-end',
   },
   dialog: {
     backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    maxHeight: '85%',
-    elevation: 16,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 28,
+    maxHeight: '88%',
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
+  },
+  dragHandle: {
+    width: 38,
+    height: 4.5,
+    borderRadius: 3,
+    backgroundColor: COLORS.borderDark,
+    alignSelf: 'center',
+    marginBottom: 16,
   },
   headerRow: {
     flexDirection: 'row',
@@ -518,9 +536,12 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: COLORS.surfaceVariant,
-    padding: 14,
-    borderRadius: 12,
+    backgroundColor: 'rgba(79, 70, 229, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(79, 70, 229, 0.12)',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    borderRadius: 16,
     alignItems: 'center',
   },
   statLabel: {

@@ -11,6 +11,8 @@ import {
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Header } from '../components/Header';
@@ -48,11 +50,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
     try {
       const service = await getQuizService();
       await service.backup.deleteAllData();
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
       setStatusMessage({
         type: 'success',
         text: 'All data has been successfully deleted.',
       });
     } catch (err: any) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      }
       setStatusMessage({
         type: 'error',
         text: err.message || 'Failed to delete all data.',
@@ -71,6 +79,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
       const result = await service.backup.exportToFile();
 
       if (result.success) {
+        if (Platform.OS !== 'web') {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
         setStatusMessage({
           type: 'success',
           text:
@@ -332,6 +343,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
         animationType="slide"
         onRequestClose={() => setIsRawJsonModalVisible(false)}
       >
+        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={styles.modalOverlay}>
           <View style={styles.jsonModalCard}>
             <View style={styles.jsonModalHeader}>
@@ -539,7 +551,6 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -549,9 +560,15 @@ const styles = StyleSheet.create({
     maxWidth: 440,
     height: '80%',
     backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    padding: 20,
-    elevation: 10,
+    borderRadius: 24,
+    padding: 24,
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.8)',
   },
   jsonModalHeader: {
     flexDirection: 'row',

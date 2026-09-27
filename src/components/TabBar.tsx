@@ -1,7 +1,9 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 
@@ -22,9 +24,16 @@ export const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabChange, hasActiv
     { key: 'history', label: 'History', icon: 'time-outline', activeIcon: 'time' },
   ];
 
+  const handleTabPress = (tabKey: MainTab) => {
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+    onTabChange(tabKey);
+  };
+
   return (
-    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 10) }]}>
-      <View style={styles.container}>
+    <View style={[styles.wrapper, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+      <BlurView intensity={85} tint="light" style={styles.blurContainer}>
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key;
           const iconName = isActive ? tab.activeIcon : tab.icon;
@@ -34,8 +43,8 @@ export const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabChange, hasActiv
             <TouchableOpacity
               key={tab.key}
               style={styles.tabButton}
-              onPress={() => onTabChange(tab.key)}
-              activeOpacity={0.7}
+              onPress={() => handleTabPress(tab.key)}
+              activeOpacity={0.6}
               accessibilityRole="tab"
               accessibilityState={{ selected: isActive }}
               accessibilityLabel={tab.label}
@@ -50,28 +59,34 @@ export const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabChange, hasActiv
             </TouchableOpacity>
           );
         })}
-      </View>
+      </BlurView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   wrapper: {
-    backgroundColor: COLORS.surface,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+    pointerEvents: 'box-none',
   },
-  container: {
+  blurContainer: {
     flexDirection: 'row',
-    height: 56,
+    height: 70,
+    width: '92%',
+    maxWidth: 420,
+    borderRadius: 35,
     alignItems: 'center',
     justifyContent: 'space-around',
     paddingHorizontal: 8,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.6)',
+    // Optional shadow (works on outer view normally, but fine here)
   },
   tabButton: {
     flex: 1,
@@ -80,30 +95,30 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   iconWrapper: {
-    width: 36,
-    height: 28,
-    borderRadius: 14,
+    width: 48,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    marginBottom: 4,
   },
   activeIconWrapper: {
-    backgroundColor: COLORS.primaryContainer,
+    backgroundColor: 'rgba(79, 70, 229, 0.12)', // primary with opacity
   },
   label: {
     fontSize: 11,
-    marginTop: 2,
     letterSpacing: -0.1,
   },
   badgeDot: {
     position: 'absolute',
     top: 2,
-    right: 4,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.success,
-    borderWidth: 1.5,
+    right: 8,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: COLORS.accent, // Using Rose color
+    borderWidth: 2,
     borderColor: COLORS.surface,
   },
 });
