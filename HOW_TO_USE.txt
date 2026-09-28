@@ -1,0 +1,244 @@
+================================================================================
+          OFFLINE QUIZ GROUP & SCORE MANAGER — USER GUIDE
+================================================================================
+Application: Offline Quiz Group & Score Manager
+Target: Church youth clubs, weekly quiz fellowships, schools, and competitions
+Connectivity: 100% Offline (No Internet / Wi-Fi required)
+================================================================================
+
+--------------------------------------------------------------------------------
+TABLE OF CONTENTS
+--------------------------------------------------------------------------------
+1. Core Concept & Golden Rule
+2. Quick-Start Guide (The 7-Step Weekly Flow)
+3. Step-by-Step Feature Walkthrough
+   - 3.1 Players Tab (Managing Roster & Duplicate Names)
+   - 3.2 Round Tab (Creating, Grouping, Scoring & Locking)
+   - 3.3 Reports Tab (Rankings, Ties & Spreadsheet Export)
+   - 3.4 History Tab (Past Rounds)
+   - 3.5 Wheel Tab (Random Selection / Turn Spinner)
+   - 3.6 Settings & Local Backups (Export / Restore Data)
+4. Frequently Asked Questions & Edge Cases
+5. Best Practices & Pro Tips
+
+================================================================================
+1. CORE CONCEPT & GOLDEN RULE
+================================================================================
+
+  "GROUPS CHANGE EVERY ROUND, BUT SCORES BELONG PERMANENTLY TO PLAYERS."
+
+In weekly church quizzes, players often get assigned to different teams or 
+groups each week to balance talent and make friends. 
+
+* The app tracks lifetime cumulative points per individual player.
+* A player's score never disappears when a round ends or when they switch groups.
+* Example:
+  - Week 1: John is in Group 1 and earns 20 points. His total = 20.
+  - Week 2: John is in Group 3 and earns 15 points. His total = 35.
+* Group totals are simply the sum of the points earned by their current members,
+  plus any optional group bonus items (e.g., bringing a Bible, notebook, pen).
+
+================================================================================
+2. QUICK-START GUIDE (THE 7-STEP WEEKLY FLOW)
+================================================================================
+
+Here is the simple rhythm to follow every quiz session:
+
+STEP 1: OPEN PLAYERS TAB
+  Make sure all attendees are registered. If new people arrived today, tap
+  "+ Add Player" and type their name.
+
+STEP 2: CREATE A ROUND (ROUND TAB)
+  Tap the "Round" tab. If no round is running, tap "Create Round".
+  - Pick today's date (defaults to today).
+  - Choose how many groups you need (e.g., 2, 3, 4, etc.).
+  - Tap "Create". The round starts in "DRAFT" mode.
+
+STEP 3: ASSIGN PLAYERS TO GROUPS
+  Under the Draft round, assign your players:
+  - Search or tap a player's name.
+  - Choose which group they belong to (Group 1, Group 2, etc.).
+  - Check the "Unassigned" badge to ensure no player is left out.
+
+STEP 4: START ROUND (ACTIVATE)
+  Once grouping is done, tap "Start Round" (or "Activate"). 
+  The round is now "ACTIVE" and ready for points.
+
+STEP 5: ENTER SCORES DURING THE QUIZ
+  As questions are answered:
+  - Tap a player's card to open the Score entry popup.
+  - Type points or use quick-add buttons (+5, +10, +15, +20).
+  - Tap "Save Score".
+  - Optional: If teams brought study materials or completed group challenges,
+    tap "Group Items / Bonus" to give bonus points to the entire group.
+
+STEP 6: LOCK THE ROUND
+  When the quiz ends, tap "Lock Round".
+  This seals the scores so they cannot be accidentally bumped or altered.
+  (You can unlock later if a genuine mistake needs fixing.)
+
+STEP 7: VIEW RANKINGS (REPORTS TAB)
+  Switch to the "Reports" tab to announce winners!
+  - "Overall": Lifetime rankings across all weeks.
+  - "By Round": Today's individual winners.
+  - "By Group": Today's winning group.
+
+================================================================================
+3. STEP-BY-STEP FEATURE WALKTHROUGH
+================================================================================
+
+--------------------------------------------------------------------------------
+3.1 PLAYERS TAB (MANAGING ROSTER & DUPLICATE NAMES)
+--------------------------------------------------------------------------------
+- Adding a Player:
+  1. Go to the "Players" tab.
+  2. Tap the "+ Add Player" button.
+  3. Enter the player's full name or nickname.
+  4. Tap "Save".
+
+- Handling Duplicate Names (#001, #002):
+  In large youth groups, having two people named "John" or "Mary" is common.
+  The app allows duplicate names and automatically assigns a unique sequential
+  tag (e.g., "John — #001" and "John — #002").
+  When you enter a name that already exists, the app asks:
+    * [ Add Another John ] -> creates a new player with a new badge.
+    * [ Change Name ]     -> lets you add a surname or initial instead.
+    * [ Cancel ]          -> aborts.
+
+- Editing a Player:
+  Tap on any player in the list to view their stats, lifetime score, and round
+  history. You can edit their name here without losing any past scores.
+
+- Search:
+  Use the top search bar to instantly filter players by name or player number.
+
+--------------------------------------------------------------------------------
+3.2 ROUND TAB (CREATING, GROUPING, SCORING & LOCKING)
+--------------------------------------------------------------------------------
+Rounds move through three distinct states:
+  [ DRAFT ]  --->  [ ACTIVE ]  --->  [ LOCKED ]
+
+- DRAFT State:
+  * Purpose: Set up groups before the quiz begins.
+  * Manual Assignment: Tap a player, choose a group.
+  * Moving Groups: If someone was placed in Group 1 by mistake, tap their name
+    and select "Change Group" to move them to Group 2.
+  * Unassigned Summary: Tap "Unassigned Players" to see who hasn't been placed.
+  * Pre-Start Safety Check: If players are still unassigned when you tap "Start",
+    the app alerts you with how many are missing so nobody is forgotten.
+
+- ACTIVE State:
+  * Purpose: Live scoring during the quiz.
+  * Tapping a player opens the quick-score numeric modal.
+  * Quick buttons (+5, +10, +15, +20, +25) speed up entry.
+  * You can enter whole numbers, zero, or edit existing scores.
+  * Edits replace the round score and recalculate lifetime totals correctly 
+    (e.g., correcting 15 to 20 adds +5 to cumulative, not 15 + 20).
+
+- Group Bonus Items:
+  * Tap "Group Items" on any group card.
+  * Assign extra points for group discipline, attendance, bringing Bibles, 
+    song participation, or team challenges.
+
+- LOCKED State:
+  * Once finalized, tap "Lock Round".
+  * Protects data from unintended taps.
+  * If a scoring error is discovered later, tap "Unlock Round" (requires
+    confirmation) to make adjustments, then lock it again.
+
+--------------------------------------------------------------------------------
+3.3 REPORTS TAB (RANKINGS, TIES & SPREADSHEET EXPORT)
+--------------------------------------------------------------------------------
+- Three Ranking Views:
+  1. "Overall": Complete lifetime leaderboard (Highest to Lowest score).
+  2. "By Round": Leaderboard for any specific round.
+  3. "By Group": Total group scores for a selected round.
+
+- Standard Competition Ties:
+  If two players tie for 1st place with 50 points, both receive Rank 1.
+  The next player receives Rank 3 (1, 1, 3, 4...).
+
+- Excel / Spreadsheet Export:
+  Tap the "Export to Excel / CSV" icon to export full score summaries into
+  a standard `.xlsx` spreadsheet. You can share this via WhatsApp, email,
+  Google Drive, or Bluetooth.
+
+--------------------------------------------------------------------------------
+3.4 HISTORY TAB (PAST ROUNDS)
+--------------------------------------------------------------------------------
+- Displays a chronological archive of all previous quiz rounds.
+- Each round shows its date, number of groups, status (Locked/Active), and winner.
+- Tap any past round to inspect full player scores and group breakdowns.
+
+--------------------------------------------------------------------------------
+3.5 WHEEL TAB (RANDOM SELECTION / TURN SPINNER)
+--------------------------------------------------------------------------------
+- Need to pick who answers first or select a volunteer?
+- The Wheel tab allows you to spin a wheel populated with your current round's
+  players or groups.
+- Smooth spin animations with haptic feedback for fun live audience engagement.
+
+--------------------------------------------------------------------------------
+3.6 SETTINGS & LOCAL BACKUPS (EXPORT / RESTORE DATA)
+--------------------------------------------------------------------------------
+Access Settings by tapping the Gear (⚙) icon on the top right.
+
+- Export Local Backup (JSON):
+  * Generates an encrypted/validated backup file containing all players,
+    rounds, groups, and historical scores.
+  * Tap "Export Backup" to open the Android share menu. Save to Google Drive,
+    send to yourself on messaging apps, or save to your Downloads folder.
+  * Recommendation: Export a backup once every month or after major events.
+
+- Restore Backup (JSON):
+  * If switching to a new phone, tap "Restore Backup" and select your `.json` file.
+  * The app runs integrity checks before applying any changes in an atomic 
+    transaction (meaning all data is safely restored or rolled back if corrupt).
+
+- Excel / CSV Import:
+  * Allows bulk onboarding of players from existing spreadsheets.
+
+================================================================================
+4. FREQUENTLY ASKED QUESTIONS & EDGE CASES
+================================================================================
+
+Q1: Does the app work without an internet connection?
+A1: Yes! The app is 100% offline. All information is stored locally on your 
+    device's internal SQLite database. You can run the app in Airplane Mode.
+
+Q2: What happens if a player misses a week?
+A2: Simply do not assign them to any group for that round. Their lifetime 
+    score remains completely untouched and safe. When they return next week, 
+    they will resume with their existing cumulative points.
+
+Q3: Can a player belong to two groups in the same round?
+A3: No. The app enforces a single-group rule per round. If you try to assign 
+    them to a second group, it prompts you to transfer them instead.
+
+Q4: What if we made a mistake on a round that is already locked?
+A4: Open the round, tap "Unlock Round", confirm the prompt, make your score 
+    corrections, and then tap "Lock Round" again.
+
+Q5: Will uninstalling the app delete my data?
+A5: Yes, Android deletes internal app storage upon uninstall. Always tap 
+    "Export Backup" in Settings before uninstalling or changing phones.
+
+================================================================================
+5. BEST PRACTICES & PRO TIPS
+================================================================================
+
+1. BEFORE QUIZ STARTS:
+   Assign players while people are arriving. Use the "Unassigned" list to 
+   quickly catch latecomers.
+
+2. KEEP ROUNDS LOCKED:
+   Always lock rounds once the session is over. This ensures past scores can 
+   never be accidentally modified when reviewing previous weeks.
+
+3. REGULAR BACKUPS:
+   At the end of every month, go to Settings -> Export Backup and save the file 
+   to your personal Google Drive or email.
+
+================================================================================
+End of User Guide. Happy Quiz Managing!
+================================================================================

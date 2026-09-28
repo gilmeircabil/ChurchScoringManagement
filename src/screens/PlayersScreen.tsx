@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';

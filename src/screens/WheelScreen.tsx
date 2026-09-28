@@ -13,7 +13,7 @@ import {
 import Svg, { Path, G, Circle, Text as SvgText, Polygon } from 'react-native-svg';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import { Header } from '../components/Header';
 import { WheelWinnerModal } from '../components/WheelWinnerModal';
 import { EditWheelModal } from '../components/EditWheelModal';

@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform, useWindowDimensions
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import { MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 

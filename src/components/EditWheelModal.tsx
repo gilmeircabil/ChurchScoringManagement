@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import { COLORS } from '../constants/colors';
 import { DEFAULT_WHEEL_ITEMS, DEFAULT_WHEEL_NAME } from '../utils/wheelStorage';
 

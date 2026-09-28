@@ -11,7 +11,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 
 interface AppIntroScreenProps {
   onFinish: () => void;

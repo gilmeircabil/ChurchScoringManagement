@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import { COLORS } from '../constants/colors';
 import { ExcelParseResult, downloadExcelTemplate } from '../utils/excelImport';
 import { pluralize } from '../utils/formatters';

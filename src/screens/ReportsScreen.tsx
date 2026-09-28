@@ -11,7 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from '../utils/haptics';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
