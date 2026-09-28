@@ -1041,4 +1041,54 @@ describe('Quiz Score Manager — Business Rules and Scenarios', () => {
       service.scores.saveGroupScore(draftRound.id, g1.id, 30)
     ).rejects.toThrow('This round is locked');
   });
+
+  // TEST 32 — Centralized item rules: Custom names and points apply to new rounds and sync across unlocked rounds
+  test('Test 32 — Centralized item rules apply to new rounds and sync across active unlocked rounds', async () => {
+    // Create an unlocked round with custom default rules (as configured from Settings)
+    const customRules = {
+      book_name: 'Bible',
+      book_points: 15,
+      pen_name: 'Marker',
+      pen_points: 8,
+      paper_name: 'Journal',
+      paper_points: 6,
+    };
+
+    const round = await service.rounds.createRound('2026-10-05', 2, customRules);
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    expect(groups[0].book_name).toBe('Bible');
+    expect(groups[0].book_points).toBe(15);
+    expect(groups[0].pen_name).toBe('Marker');
+    expect(groups[0].pen_points).toBe(8);
+    expect(groups[0].paper_name).toBe('Journal');
+    expect(groups[0].paper_points).toBe(6);
+
+    // Give items bonus to Group 1 (2 Bibles, 1 Marker, 1 Journal)
+    // 2*15 + 1*8 + 1*6 = 30 + 8 + 6 = 44
+    await service.groups.updateGroupItems(groups[0].id, {
+      book_count: 2,
+      pen_count: 1,
+      paper_count: 1,
+    });
+
+    let details = await service.groups.getGroupDetails(round.id);
+    expect(details[0].items_bonus).toBe(44);
+
+    // Now update settings globally to new points (e.g. Bible: 10, Marker: 5, Journal: 5)
+    // and sync to unlocked round
+    await service.groups.updateRoundItemRules(round.id, {
+      book_name: 'Book',
+      book_points: 10,
+      pen_name: 'Pen',
+      pen_points: 5,
+      paper_name: 'Paper',
+      paper_points: 5,
+    });
+
+    // Verify auto-total recalculated: 2*10 + 1*5 + 1*5 = 30
+    details = await service.groups.getGroupDetails(round.id);
+    expect(details[0].book_name).toBe('Book');
+    expect(details[0].book_points).toBe(10);
+    expect(details[0].items_bonus).toBe(30);
+  });
 });

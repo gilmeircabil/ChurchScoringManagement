@@ -21,6 +21,7 @@ import { Round, PlayerWithStats, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 import { APP_CONFIG } from '../constants/config';
 import { formatDateDisplay, pluralize } from '../utils/formatters';
+import { logError } from '../utils/logger';
 
 interface HomeScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -59,7 +60,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, onOpenSettin
       const topPlayer = await service.scores.getCurrentLeader();
       setLeader(topPlayer);
     } catch (err) {
-      console.error('Error loading home data:', err);
+      logError('Error loading home data:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);

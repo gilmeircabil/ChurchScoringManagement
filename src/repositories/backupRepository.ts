@@ -3,6 +3,9 @@ import * as Sharing from 'expo-sharing';
 import { IDatabaseConnection } from '../database/types';
 import { BackupData, Player, Round, Group, GroupMember, Score } from '../types';
 import { APP_CONFIG } from '../constants/config';
+import { validateBackupData } from '../utils/backupValidation';
+import { UserFacingError } from '../utils/errors';
+import { logWarn } from '../utils/logger';
 
 export class BackupRepository {
   private db: IDatabaseConnection;
@@ -17,7 +20,9 @@ export class BackupRepository {
   async generateBackupData(): Promise<BackupData> {
     const players = await this.db.getAllAsync<Player>('SELECT * FROM players ORDER BY player_number ASC');
     const rounds = await this.db.getAllAsync<Round>('SELECT * FROM rounds ORDER BY round_date ASC, created_at ASC');
-    const groups = await this.db.getAllAsync<Group>('SELECT * FROM groups ORDER BY group_number ASC');
+    const groups = await this.db.getAllAsync<Group>(
+      'SELECT * FROM groups ORDER BY round_id ASC, group_number ASC'
+    );
     const groupMembers = await this.db.getAllAsync<GroupMember>('SELECT * FROM group_members ORDER BY created_at ASC');
     const scores = await this.db.getAllAsync<Score>('SELECT * FROM scores ORDER BY created_at ASC');
 
@@ -75,62 +80,34 @@ export class BackupRepository {
         return { success: true, filePath, jsonString };
       }
     } catch (err) {
-      console.warn('File system export not available or failed:', err);
+      logWarn('BackupRepository.exportToFile', err);
     }
 
     return { success: true, jsonString };
   }
 
   /**
-   * Validates structure and types of backup payload.
+   * Validates structure, types, and referential integrity of a backup payload.
+   * See `validateBackupData` for the full rule set.
    */
-  validateBackupData(data: any): { isValid: boolean; error?: string } {
-    if (!data || typeof data !== 'object') {
-      return { isValid: false, error: 'Backup file is invalid or corrupted (not valid JSON).' };
-    }
-
-    if (typeof data.version !== 'number' || data.version !== 1) {
-      return { isValid: false, error: 'Unsupported backup version. Expected version 1.' };
-    }
-
-    if (
-      !Array.isArray(data.players) ||
-      !Array.isArray(data.rounds) ||
-      !Array.isArray(data.groups) ||
-      !Array.isArray(data.groupMembers) ||
-      !Array.isArray(data.scores)
-    ) {
-      return {
-        isValid: false,
-        error: 'Backup file is missing required data tables (players, rounds, groups, groupMembers, scores).',
-      };
-    }
-
-    // Validate player entries
-    for (const p of data.players) {
-      if (!p.id || typeof p.name !== 'string') {
-        return { isValid: false, error: 'Corrupted player record found in backup.' };
-      }
-    }
-
-    // Validate round entries
-    for (const r of data.rounds) {
-      if (!r.id || !r.round_date || typeof r.group_count !== 'number' || !r.status) {
-        return { isValid: false, error: 'Corrupted round record found in backup.' };
-      }
-    }
-
-    return { isValid: true };
+  validateBackupData(data: unknown): { isValid: boolean; error?: string } {
+    return validateBackupData(data);
   }
 
   /**
-   * Atomically restores database from validated backup data.
+   * Atomically restores the database from a validated backup.
+   *
+   * The whole database is replaced inside a single transaction, so a failure
+   * part-way through rolls back and leaves the existing data untouched. The
+   * caller is responsible for confirming the destructive replacement with the
+   * user first.
    */
-  async restoreFromData(data: BackupData): Promise<void> {
-    const validation = this.validateBackupData(data);
+  async restoreFromData(data: unknown): Promise<void> {
+    const validation = validateBackupData(data);
     if (!validation.isValid) {
-      throw new Error(validation.error || 'Invalid backup file.');
+      throw new UserFacingError(validation.error);
     }
+    const backup = data as BackupData;
 
     await this.db.withTransactionAsync(async () => {
       // Clear existing records safely
@@ -141,11 +118,11 @@ export class BackupRepository {
       await this.db.runAsync('DELETE FROM players');
 
       // Insert players
-      for (const p of data.players) {
+      for (const p of backup.players) {
         await this.db.runAsync(
           'INSERT INTO players (id, player_number, name, initial_score, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
           p.id,
-          p.player_number || 1,
+          p.player_number,
           p.name,
           p.initial_score ?? 0,
           p.active ?? 1,
@@ -155,7 +132,7 @@ export class BackupRepository {
       }
 
       // Insert rounds
-      for (const r of data.rounds) {
+      for (const r of backup.rounds) {
         await this.db.runAsync(
           'INSERT INTO rounds (id, round_date, group_count, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
           r.id,
@@ -167,20 +144,26 @@ export class BackupRepository {
         );
       }
 
-      // Insert groups
-      for (const g of data.groups) {
+      // Insert groups. `quiz_score` is restored explicitly: re-deriving it would
+      // lose group-level scores and change the group report after a restore.
+      for (const g of backup.groups) {
         await this.db.runAsync(
-          'INSERT INTO groups (id, round_id, group_number, book_count, pen_count, paper_count, book_points, pen_points, paper_points, name, book_name, pen_name, paper_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          `INSERT INTO groups (id, round_id, group_number, name, quiz_score,
+             book_count, pen_count, paper_count,
+             book_points, pen_points, paper_points,
+             book_name, pen_name, paper_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           g.id,
           g.round_id,
           g.group_number,
+          g.name ?? null,
+          g.quiz_score ?? 0,
           g.book_count ?? 0,
           g.pen_count ?? 0,
           g.paper_count ?? 0,
           g.book_points ?? 10,
           g.pen_points ?? 5,
           g.paper_points ?? 5,
-          g.name ?? null,
           g.book_name || 'Book',
           g.pen_name || 'Pen',
           g.paper_name || 'Paper'
@@ -188,7 +171,7 @@ export class BackupRepository {
       }
 
       // Insert group members
-      for (const gm of data.groupMembers) {
+      for (const gm of backup.groupMembers) {
         await this.db.runAsync(
           'INSERT INTO group_members (id, round_id, group_id, player_id, created_at) VALUES (?, ?, ?, ?, ?)',
           gm.id,
@@ -200,7 +183,7 @@ export class BackupRepository {
       }
 
       // Insert scores
-      for (const s of data.scores) {
+      for (const s of backup.scores) {
         await this.db.runAsync(
           'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
           s.id,

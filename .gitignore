@@ -12,11 +12,24 @@ expo-env.d.ts
 # Native
 .kotlin/
 *.orig.*
+
+# --- Secrets and signing material: never commit these ---
 *.jks
+*.keystore
 *.p8
 *.p12
+*.pem
+*.cer
+*.crt
 *.key
 *.mobileprovision
+*.provisionprofile
+*.ipa
+*.aab
+google-services.json
+GoogleService-Info.plist
+PlayStoreServiceAccountKey.json
+secrets.json
 
 # Metro
 .metro-health-check*
@@ -28,14 +41,22 @@ yarn-error.*
 
 # macOS
 .DS_Store
-*.pem
 
 # local env files
-.env*.local
+# `.env.example` stays tracked so the required variable names are documented.
+.env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
 
-# generated native folders
+# local EAS / build output
+eas-build-*/
+*.aab
+*.apk
+*.ipa
+
+# generated native folders (Continuous Native Generation)
 /ios
 /android

@@ -23,6 +23,8 @@ import { ConfirmationModal } from '../components/ConfirmationModal';
 import { DestructiveConfirmModal } from '../components/DestructiveConfirmModal';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
 import { PendingScorePlaceholder } from '../components/PendingScorePlaceholder';
+import { logError } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 interface PlayerDetailModalProps {
   visible: boolean;
@@ -63,7 +65,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       setStats(playerStats);
       setHistory(scoreHistory);
     } catch (err) {
-      console.error('Failed to load player details:', err);
+      logError('Failed to load player details:', err);
     } finally {
       setLoading(false);
     }
@@ -131,7 +133,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       await service.rounds.updateRoundStatus(target.round_id, 'ACTIVE');
       setEditingScoreItem({ ...target, round_status: 'ACTIVE' });
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Unable to unlock round.');
+      Alert.alert('Error', getErrorMessage(err, 'Unable to unlock round.', 'PlayerDetailModal'));
     }
   };
 
@@ -144,7 +146,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
       await loadPlayerDetails(player.id);
       onPlayerUpdated();
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Unable to save score.');
+      Alert.alert('Error', getErrorMessage(err, 'Unable to save score.', 'PlayerDetailModal'));
     }
   };
 

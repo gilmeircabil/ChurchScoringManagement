@@ -20,6 +20,8 @@ import { getQuizService } from '../services/quizService';
 import { RoundHistoryItem, Round, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 import { formatDateDisplay, pluralize } from '../utils/formatters';
+import { logError } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 interface HistoryScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -48,7 +50,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
       const list = await service.rounds.getRoundHistoryList();
       setHistoryList(list);
     } catch (err) {
-      console.error('Failed to load round history:', err);
+      logError('Failed to load round history:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -70,7 +72,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
       const fullRound = await service.rounds.getRoundById(roundItem.id);
       setSelectedRound(fullRound);
     } catch (err) {
-      console.error('Failed to load round:', err);
+      logError('Failed to load round:', err);
     }
   };
 
@@ -92,7 +94,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
       }
       setShowClearConfirm(true);
     } catch (err: any) {
-      setClearMessage({ type: 'error', text: err.message || 'Unable to check the current round.' });
+      setClearMessage({ type: 'error', text: getErrorMessage(err, 'Unable to check the current round.', 'HistoryScreen') });
     }
   };
 
@@ -109,7 +111,7 @@ export const HistoryScreen: React.FC<HistoryScreenProps> = ({
       });
       await loadHistory();
     } catch (err: any) {
-      setClearMessage({ type: 'error', text: err.message || 'Failed to clear history.' });
+      setClearMessage({ type: 'error', text: getErrorMessage(err, 'Failed to clear history.', 'HistoryScreen') });
     } finally {
       setClearing(false);
     }

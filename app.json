@@ -1,23 +1,37 @@
 {
   "expo": {
-    "name": "Quiz Score Manager",
+    "name": "Offline Quiz Group & Score Manager",
     "slug": "quiz-score-manager",
-    "version": "1.0.0",
+    "description": "Offline cross-platform app for managing weekly quiz rounds, players, manual group assignments, individual scores, cumulative reports, and round history.",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "scheme": "quizscore",
     "userInterfaceStyle": "light",
+    "primaryColor": "#4F46E5",
+    "backgroundColor": "#F8FAFC",
+    "platforms": ["android", "ios"],
     "ios": {
-      "supportsTablet": true
+      "bundleIdentifier": "com.gilmierdev.quizscore",
+      "supportsTablet": true,
+      "requireFullScreen": false
     },
     "android": {
-      "package": "com.churchmanagequiz.quizscoremanager",
+      "package": "com.gilmierdev.quizscore",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "allowBackup": false,
+      "softwareKeyboardLayoutMode": "resize",
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.MANAGE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -27,7 +41,16 @@
       "expo-sqlite",
       "expo-sharing",
       "expo-document-picker",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F8FAFC",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 180,
+          "resizeMode": "contain"
+        }
+      ]
     ]
   }
 }

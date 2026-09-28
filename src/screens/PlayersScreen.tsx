@@ -31,6 +31,8 @@ import { pluralize } from '../utils/formatters';
 import { validatePlayerName, validateScore } from '../utils/validation';
 import { ExcelParseResult, readUploadedSpreadsheet } from '../utils/excelImport';
 import { exportPlayersRosterToExcel } from '../utils/excelExport';
+import { logError } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 interface PlayersScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -84,8 +86,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
         setIsImportModalVisible(true);
       }
     } catch (err: any) {
-      console.error('File pick error:', err);
-      Alert.alert('File Selection Failed', err.message || 'Could not access file.');
+      logError('File pick error:', err);
+      Alert.alert('File Selection Failed', getErrorMessage(err, 'Could not access file.', 'PlayersScreen'));
     } finally {
       setIsPickingFile(false);
     }
@@ -112,7 +114,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
         `Successfully imported ${res.createdCount} ${pluralize(res.createdCount, 'player')} into the quiz system!`
       );
     } catch (err: any) {
-      Alert.alert('Import Failed', err.message || 'Unable to import players.');
+      Alert.alert('Import Failed', getErrorMessage(err, 'Unable to import players.', 'PlayersScreen'));
     }
   };
 
@@ -135,8 +137,8 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
         Alert.alert('Export Error', res.error);
       }
     } catch (err: any) {
-      console.error('Player Excel export error:', err);
-      Alert.alert('Export Failed', err.message || 'Unable to export players to Excel.');
+      logError('Player Excel export error:', err);
+      Alert.alert('Export Failed', getErrorMessage(err, 'Unable to export players to Excel.', 'PlayersScreen'));
     } finally {
       setIsExporting(false);
     }
@@ -148,7 +150,7 @@ export const PlayersScreen: React.FC<PlayersScreenProps> = ({ onNavigate: _onNav
       const list = await service.players.searchPlayersWithStats(query, true);
       setPlayers(list);
     } catch (err) {
-      console.error('Failed to load players:', err);
+      logError('Failed to load players:', err);
     } finally {
       setLoading(false);
     }

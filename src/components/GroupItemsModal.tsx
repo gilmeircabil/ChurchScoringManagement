@@ -15,6 +15,7 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/colors';
+import { logError } from '../utils/logger';
 
 interface GroupItemsModalProps {
   visible: boolean;
@@ -69,66 +70,40 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
   // Custom Group Name (optional)
   const [customGroupName, setCustomGroupName] = useState(groupName || '');
 
-  // Item Names (editable)
-  const [bookName, setBookName] = useState(initialBookName || 'Book');
-  const [penName, setPenName] = useState(initialPenName || 'Pen');
-  const [paperName, setPaperName] = useState(initialPaperName || 'Paper');
-
   // Counts
   const [bookCount, setBookCount] = useState(String(initialBookCount ?? 0));
   const [penCount, setPenCount] = useState(String(initialPenCount ?? 0));
   const [paperCount, setPaperCount] = useState(String(initialPaperCount ?? 0));
 
-  // Point values (editable)
-  const [bookPoints, setBookPoints] = useState(String(initialBookPoints ?? 10));
-  const [penPoints, setPenPoints] = useState(String(initialPenPoints ?? 5));
-  const [paperPoints, setPaperPoints] = useState(String(initialPaperPoints ?? 5));
-
-  // Toggle for editing item rules / point values
-  const [showEditRules, setShowEditRules] = useState(false);
-  const [applyToAll, setApplyToAll] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (visible) {
       setCustomGroupName(groupName || '');
-      setBookName(initialBookName || 'Book');
-      setPenName(initialPenName || 'Pen');
-      setPaperName(initialPaperName || 'Paper');
       setBookCount(String(initialBookCount ?? 0));
       setPenCount(String(initialPenCount ?? 0));
       setPaperCount(String(initialPaperCount ?? 0));
-      setBookPoints(String(initialBookPoints ?? 10));
-      setPenPoints(String(initialPenPoints ?? 5));
-      setPaperPoints(String(initialPaperPoints ?? 5));
-      setShowEditRules(false);
       setSaving(false);
     }
   }, [
     visible,
     groupName,
-    initialBookName,
-    initialPenName,
-    initialPaperName,
     initialBookCount,
     initialPenCount,
     initialPaperCount,
-    initialBookPoints,
-    initialPenPoints,
-    initialPaperPoints,
   ]);
 
-  const cleanBookName = bookName.trim() || 'Book';
-  const cleanPenName = penName.trim() || 'Pen';
-  const cleanPaperName = paperName.trim() || 'Paper';
+  const cleanBookName = initialBookName?.trim() || 'Book';
+  const cleanPenName = initialPenName?.trim() || 'Pen';
+  const cleanPaperName = initialPaperName?.trim() || 'Paper';
+
+  const numBookPts = typeof initialBookPoints === 'number' ? initialBookPoints : 10;
+  const numPenPts = typeof initialPenPoints === 'number' ? initialPenPoints : 5;
+  const numPaperPts = typeof initialPaperPoints === 'number' ? initialPaperPoints : 5;
 
   const numBookCount = Math.max(0, parseInt(bookCount, 10) || 0);
   const numPenCount = Math.max(0, parseInt(penCount, 10) || 0);
   const numPaperCount = Math.max(0, parseInt(paperCount, 10) || 0);
-
-  const numBookPts = Math.max(0, parseInt(bookPoints, 10) || 0);
-  const numPenPts = Math.max(0, parseInt(penPoints, 10) || 0);
-  const numPaperPts = Math.max(0, parseInt(paperPoints, 10) || 0);
 
   const bookSubtotal = numBookCount * numBookPts;
   const penSubtotal = numPenCount * numPenPts;
@@ -167,11 +142,11 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
         book_name: cleanBookName,
         pen_name: cleanPenName,
         paper_name: cleanPaperName,
-        applyToAllGroups: applyToAll,
+        applyToAllGroups: false,
       });
       onClose();
     } catch (err) {
-      console.error('Failed to save group items bonus:', err);
+      logError('Failed to save group items bonus:', err);
     } finally {
       setSaving(false);
     }
@@ -206,138 +181,17 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
           </View>
 
           <ScrollView style={styles.bodyScroll} showsVerticalScrollIndicator={false}>
-            {/* Points & Rules Configuration Bar */}
-            <View style={styles.pointsConfigBar}>
-              <View style={styles.pointsConfigSummary}>
-                <Ionicons name="pricetag-outline" size={15} color={COLORS.primary} />
-                <Text style={styles.pointsConfigSummaryText} numberOfLines={1}>
-                  Rules: {cleanBookName} ({numBookPts} pts) • {cleanPenName} ({numPenPts} pts) • {cleanPaperName} ({numPaperPts} pts)
-                </Text>
-              </View>
-              {!isLocked && (
-                <TouchableOpacity
-                  style={styles.toggleEditPointsButton}
-                  onPress={() => setShowEditRules(!showEditRules)}
-                >
-                  <Text style={styles.toggleEditPointsText}>
-                    {showEditRules ? 'Done' : 'Edit Rules'}
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Editable Rules & Names Drawer */}
-            {showEditRules && !isLocked && (
-              <View style={styles.editPointsDrawer}>
-                {/* Optional Group Custom Name */}
-                <View style={styles.groupNameField}>
-                  <Text style={styles.drawerFieldLabel}>🏷️ Group Name (Optional)</Text>
-                  <TextInput
-                    style={styles.drawerNameInput}
-                    value={customGroupName}
-                    onChangeText={setCustomGroupName}
-                    placeholder={`e.g. Team David (Default: Group ${groupNumber})`}
-                    placeholderTextColor={COLORS.textMuted}
-                  />
-                </View>
-
-                <Text style={[styles.drawerTitle, { marginTop: 10 }]}>Item Names & Points Per Item:</Text>
-                <View style={styles.rulesList}>
-                  {/* Item 1 */}
-                  <View style={styles.ruleItemCard}>
-                    <Text style={styles.ruleItemHeader}>Item 1 (Default: Book)</Text>
-                    <View style={styles.ruleItemRow}>
-                      <View style={{ flex: 1.6, marginRight: 8 }}>
-                        <Text style={styles.ruleSubLabel}>Name</Text>
-                        <TextInput
-                          style={styles.ruleTextInput}
-                          value={bookName}
-                          onChangeText={setBookName}
-                          placeholder="Book"
-                          placeholderTextColor={COLORS.textMuted}
-                        />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.ruleSubLabel}>Points Each</Text>
-                        <TextInput
-                          style={styles.rulePointsInput}
-                          value={bookPoints}
-                          onChangeText={setBookPoints}
-                          keyboardType="number-pad"
-                          selectTextOnFocus
-                        />
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Item 2 */}
-                  <View style={styles.ruleItemCard}>
-                    <Text style={styles.ruleItemHeader}>Item 2 (Default: Pen)</Text>
-                    <View style={styles.ruleItemRow}>
-                      <View style={{ flex: 1.6, marginRight: 8 }}>
-                        <Text style={styles.ruleSubLabel}>Name</Text>
-                        <TextInput
-                          style={styles.ruleTextInput}
-                          value={penName}
-                          onChangeText={setPenName}
-                          placeholder="Pen"
-                          placeholderTextColor={COLORS.textMuted}
-                        />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.ruleSubLabel}>Points Each</Text>
-                        <TextInput
-                          style={styles.rulePointsInput}
-                          value={penPoints}
-                          onChangeText={setPenPoints}
-                          keyboardType="number-pad"
-                          selectTextOnFocus
-                        />
-                      </View>
-                    </View>
-                  </View>
-
-                  {/* Item 3 */}
-                  <View style={styles.ruleItemCard}>
-                    <Text style={styles.ruleItemHeader}>Item 3 (Default: Paper)</Text>
-                    <View style={styles.ruleItemRow}>
-                      <View style={{ flex: 1.6, marginRight: 8 }}>
-                        <Text style={styles.ruleSubLabel}>Name</Text>
-                        <TextInput
-                          style={styles.ruleTextInput}
-                          value={paperName}
-                          onChangeText={setPaperName}
-                          placeholder="Paper"
-                          placeholderTextColor={COLORS.textMuted}
-                        />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.ruleSubLabel}>Points Each</Text>
-                        <TextInput
-                          style={styles.rulePointsInput}
-                          value={paperPoints}
-                          onChangeText={setPaperPoints}
-                          keyboardType="number-pad"
-                          selectTextOnFocus
-                        />
-                      </View>
-                    </View>
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  style={styles.checkboxRow}
-                  onPress={() => setApplyToAll(!applyToAll)}
-                >
-                  <Ionicons
-                    name={applyToAll ? 'checkbox' : 'square-outline'}
-                    size={20}
-                    color={COLORS.primary}
-                  />
-                  <Text style={styles.checkboxLabel}>
-                    Apply item names & points to all groups in this round
-                  </Text>
-                </TouchableOpacity>
+            {/* Optional Group Custom Name */}
+            {!isLocked && (
+              <View style={styles.groupNameField}>
+                <Text style={styles.drawerFieldLabel}>🏷️ Group Name (Optional)</Text>
+                <TextInput
+                  style={styles.drawerNameInput}
+                  value={customGroupName}
+                  onChangeText={setCustomGroupName}
+                  placeholder={`e.g. Team David (Default: Group ${groupNumber})`}
+                  placeholderTextColor={COLORS.textMuted}
+                />
               </View>
             )}
 
@@ -584,61 +438,9 @@ const styles = StyleSheet.create({
     flexGrow: 0,
     maxHeight: 460,
   },
-  pointsConfigBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.primaryContainer,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 12,
-  },
-  pointsConfigSummary: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    gap: 6,
-  },
-  pointsConfigSummaryText: {
-    fontSize: 12,
-    color: COLORS.onPrimaryContainer,
-    fontWeight: '600',
-  },
-  toggleEditPointsButton: {
-    backgroundColor: COLORS.surface,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: COLORS.primaryLight,
-  },
-  toggleEditPointsText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  editPointsDrawer: {
-    backgroundColor: COLORS.surfaceVariant,
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  drawerTitle: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    marginBottom: 8,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
+
   groupNameField: {
-    marginBottom: 6,
-  },
-  drawerGroupField: {
-    marginBottom: 6,
+    marginBottom: 10,
   },
   drawerFieldLabel: {
     fontSize: 12,
@@ -656,88 +458,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: COLORS.textPrimary,
-  },
-  rulesList: {
-    gap: 8,
-    marginBottom: 10,
-  },
-  ruleItemCard: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: 8,
-  },
-  ruleItemHeader: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  ruleItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ruleSubLabel: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    marginBottom: 2,
-    textTransform: 'uppercase',
-  },
-  ruleTextInput: {
-    backgroundColor: COLORS.surfaceVariant,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-  },
-  rulePointsInput: {
-    backgroundColor: COLORS.surfaceVariant,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-  },
-  drawerRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 10,
-  },
-  drawerField: {
-    flex: 1,
-  },
-  drawerInput: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-  },
-  checkboxRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingTop: 4,
-  },
-  checkboxLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    flex: 1,
   },
   itemsContainer: {
     gap: 8,

@@ -70,11 +70,11 @@ export function validateScore(scoreInput: string | number): {
     };
   }
 
-  if (parsed > 100000) {
+  if (parsed > APP_CONFIG.maxScorePerRound) {
     return {
       isValid: false,
       points: 0,
-      error: 'Score is too large (maximum 100,000 points per round).',
+      error: `Score is too large (maximum ${APP_CONFIG.maxScorePerRound.toLocaleString()} points per round).`,
     };
   }
 

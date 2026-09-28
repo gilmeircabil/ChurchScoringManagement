@@ -83,35 +83,47 @@ A player's score **never** belongs to a group. Groups are temporary round-level 
 ## 4. Project Structure
 
 ```text
-ChurchManageQuiz/
-├── android/                   # Generated Android native project (Gradle, AndroidManifest, Keystore)
+ChurchScoringManagement/
+├── app-version.json           # Single source of truth: version, versionCode, buildNumber
+├── app.config.ts              # Dynamic Expo config: reads app-version.json, forces IDs
+├── app.json                   # Static Expo config: assets, splash, permissions
+├── eas.json                   # EAS build profiles
+├── scripts/
+│   ├── set-version.mjs        # Bump version and both build numbers, sync package.json
+│   └── check-version.mjs      # Verify the three version sources agree
 ├── assets/                    # App icons, adaptive icons, splash screen
 ├── src/
 │   ├── components/            # Reusable UI components
-│   │   ├── Header.tsx         # Android top app bar
-│   │   ├── TabBar.tsx         # Android bottom navigation bar
+│   │   ├── Header.tsx         # Top app bar
+│   │   ├── TabBar.tsx         # Bottom navigation bar
 │   │   ├── PlayerBadge.tsx    # Player name + #001 UI badge
 │   │   ├── ScoreModal.tsx     # Fast numeric score entry dialog
 │   │   ├── DuplicateConfirmModal.tsx # Duplicate name confirmation dialog
 │   │   ├── AssignGroupModal.tsx      # Group assignment & movement modal
 │   │   ├── ConfirmationModal.tsx     # Action confirmations (Lock, Unlock, Restore)
 │   │   ├── UnassignedListModal.tsx   # Unassigned players modal
-│   │   └── EmptyState.tsx            # Illustrated empty states
+│   │   ├── GroupItemsModal.tsx       # Book/pen/paper point configuration
+│   │   ├── ExcelImportModal.tsx      # Spreadsheet import preview
+│   │   ├── SearchBar.tsx
+│   │   ├── AppIntroScreen.tsx
+│   │   └── EmptyState.tsx
 │   ├── constants/
 │   │   ├── colors.ts          # Material 3 inspired color palette
-│   │   └── config.ts          # Application name, version, and defaults
+│   │   ├── config.ts          # Limits and the database schema version
+│   │   └── appIdentity.ts     # Product name, developer, repo, license, privacy URL
 │   ├── database/
 │   │   ├── database.ts        # Database connection manager (expo-sqlite)
-│   │   ├── migrations.ts      # Schema, indexes, foreign keys, PRAGMA user_version
+│   │   ├── migrations.ts      # Ordered migrations, indexes, PRAGMA user_version
 │   │   └── types.ts           # IDatabaseConnection abstraction
 │   ├── repositories/          # Data Access Layer
 │   │   ├── playerRepository.ts# Player CRUD, search, duplicate detection
 │   │   ├── roundRepository.ts # Round management, status transitions
 │   │   ├── groupRepository.ts # Group queries, assignments, moves, unassigned
+│   │   ├── groupScoring.ts    # Shared carry/items/recompute rules
 │   │   ├── scoreRepository.ts # Score entry, upserts, cumulative SUM calculation
 │   │   ├── reportRepository.ts# Overall, by-round, and by-group rankings
 │   │   └── backupRepository.ts# JSON export/import and atomic restore
-│   ├── screens/               # Main screens
+│   ├── screens/
 │   │   ├── HomeScreen.tsx     # Dashboard with current round & leader
 │   │   ├── PlayersScreen.tsx  # Players list, search, add, detail modal
 │   │   ├── PlayerDetailModal.tsx # Player stats & historical scores
@@ -125,19 +137,29 @@ ChurchManageQuiz/
 │   ├── types/
 │   │   └── index.ts           # Core TypeScript domain models & view types
 │   └── utils/
+│       ├── backupValidation.ts# Structural + referential validation of backup JSON
+│       ├── errors.ts          # UserFacingError and safe message extraction
+│       ├── logger.ts          # Development-only logging
+│       ├── appVersion.ts      # Native version/build reader
+│       ├── excelExport.ts     # XLSX export
+│       ├── excelImport.ts     # XLSX/CSV import
 │       ├── formatters.ts      # Date, #001 identifier, ranking helpers
 │       ├── idGenerator.ts     # Collision-free UUID generator
 │       └── validation.ts      # Name, score, and group count validation
-├── tests/                     # Automated Test Suite
-│   ├── businessRules.test.ts  # Verification for all 12 core scenarios
+├── tests/
+│   ├── businessRules.test.ts  # Core product scenarios
+│   ├── productionReadiness.test.ts # Migrations, backup, scoring, error handling
+│   ├── wheel.test.ts          # Wheel/spinner feature
 │   ├── testDbAdapter.ts       # sql.js in-memory database test connection
 │   └── mocks/                 # Jest native mocks
 ├── App.tsx                    # Root component with tabs & SQLite initialization
-├── app.json                   # Expo / Android configuration
 ├── jest.config.js             # Jest test configuration
 ├── package.json               # Dependencies and scripts
-└── tsconfig.json              # TypeScript configuration
+├── tsconfig.json              # App TypeScript configuration
+└── tsconfig.node.json         # Node-side config typechecking (app.config.ts, scripts)
 ```
+
+`android/` and `ios/` are generated at build time and are git-ignored.
 
 ---
 
@@ -260,23 +282,26 @@ ORDER BY total_score DESC;
 
 ```bash
 # Clone the repository and install dependencies
-git clone https://github.com/your-username/ChurchManageQuiz.git
-cd ChurchManageQuiz
+git clone https://github.com/gilmierdev/ChurchScoringManagement.git
+cd ChurchScoringManagement
 npm install
 ```
 
-### Run Type Checking
+### Verify Everything
 
 ```bash
-npm run typecheck
+npm run verify
 ```
 
-### Run Automated Tests
+This runs the version consistency check, both TypeScript projects, ESLint, and the full test suite in order.
 
-Execute the 14-test suite covering all 12 required scenarios and business rules:
+Individual steps:
 
 ```bash
-npm test
+npm run version:check   # app-version.json matches app config and package.json
+npm run typecheck       # app code + Node-side Expo config
+npm run lint            # expo lint
+npm test                # Jest, in-memory SQLite
 ```
 
 ### Start Development Server
@@ -299,64 +324,78 @@ npm run web
 npx expo start
 ```
 
-Press `a` in the terminal to launch the app on a connected Android phone or Android emulator via Expo Go or a development build.
+Press `a` in the terminal to launch the app on a connected Android phone or Android emulator.
+
+> The app uses `expo-sqlite`, which is a native module and is **not** included in Expo Go. Run `npm run android` (or `npm run eas:dev:android`) to install a development build on a device before testing on hardware. The web target works in Expo Go.
 
 ---
 
-## 7. Android Build & APK Generation
+## 7. Building the App
 
-The Android native project is pre-configured with Gradle, AndroidManifest, and debug signing.
+This project uses **Continuous Native Generation**: there is no committed `android/` or `ios/` directory. Everything native is generated from `app.json` and `app.config.ts` during the build, so the git-ignored native folders are disposable.
 
-### Option A: Local Build with Gradle (Generates APK)
+### Version and Build Numbers
 
-Make sure `ANDROID_HOME` is set to your Android SDK directory (e.g., `%LOCALAPPDATA%\Android\Sdk` on Windows).
+`app-version.json` is the single source of truth for the release version and both build numbers. `app.config.ts` reads it, and `package.json` is kept in sync.
 
-#### 1. Build Debug APK
+```bash
+npm run version:check   # verify the three agree
+npm run version:set     # bump version, versionCode, and buildNumber together
+```
+
+Release versions and builds always increase, including the iOS build number, which matters for App Store review. Set `runtimeVersion.policy` in `app.config.ts` to control Expo Updates compatibility.
+
+### Option A: Cloud Build with EAS (recommended)
+
+EAS runs the native generation and signing for you, so no local Android Studio or Xcode is required.
+
+```bash
+npx --yes eas-cli@latest login
+npx --yes eas-cli@latest build:configure   # one-time project linking
+```
+
+Convenience scripts are already defined in `package.json`:
+
+```bash
+npm run eas:dev:android       # internal debug build
+npm run eas:preview:android   # internal release-signed APK
+npm run eas:preview:ios       # internal iOS build
+npm run eas:production:android
+npm run eas:production:ios
+```
+
+Profiles live in `eas.json`:
+
+| Profile | Android artifact | Distribution | Purpose |
+|---|---|---|---|
+| `development` | APK | internal | Fast iteration on a device |
+| `preview` | APK | internal | Release-signed testing, closer to production |
+| `production` | App Bundle (`.aab`) | store | Play Store / App Store submission |
+
+> `expo-dev-client` is intentionally not installed, so the `development` profile is a standard build rather than a dev client. Add it later only if you need in-app dev menus.
+
+### Option B: Local Native Build
+
+Requires the Android SDK (or Xcode) and a local JDK 17 or 21.
+
+```bash
+npm run android   # expo run:android — generates android/ and installs a debug build
+npm run ios       # expo run:ios
+```
+
+After a local generation you can also drive Gradle directly:
 
 ```powershell
 cd android
 .\gradlew assembleDebug
-```
-
-The resulting APK will be located at:
-`android/app/build/outputs/apk/debug/app-debug.apk`
-
-You can install it directly onto any connected Android device using:
-```bash
-adb install android/app/build/outputs/apk/debug/app-debug.apk
-```
-
-#### 2. Build Release APK
-
-To create an optimized release APK:
-
-```powershell
-cd android
 .\gradlew assembleRelease
 ```
 
-The resulting release APK will be located at:
-`android/app/build/outputs/apk/release/app-release.apk`
+The native folders are git-ignored. If they ever drift from the config, regenerate rather than hand-editing:
 
----
-
-### Option B: Cloud Build with EAS (No Local Android SDK Needed)
-
-If you don't have Android Studio or the Android SDK installed locally, you can build the APK in the cloud with EAS CLI:
-
-1. Install EAS CLI:
-   ```bash
-   npm install -g eas-cli
-   ```
-2. Log in or configure EAS:
-   ```bash
-   eas login
-   eas build:configure
-   ```
-3. Generate standalone Android APK:
-   ```bash
-   eas build --platform android --profile preview
-   ```
+```bash
+npm run prebuild   # expo prebuild --clean
+```
 
 ---
 
@@ -364,68 +403,56 @@ If you don't have Android Studio or the Android SDK installed locally, you can b
 
 ### How to Change the Application Name
 
-The application name is centrally configured:
+The display name lives in `app.json`:
 
-1. Open `src/constants/config.ts` and update `appName`:
-   ```typescript
-   export const APP_CONFIG = {
-     appName: 'My Custom Quiz Manager',
-     // ...
-   };
-   ```
-2. Update `app.json`:
-   ```json
-   {
-     "expo": {
-       "name": "My Custom Quiz Manager"
-     }
-   }
-   ```
-3. Update `android/app/src/main/res/values/strings.xml`:
-   ```xml
-   <resources>
-       <string name="app_name">My Custom Quiz Manager</string>
-   </resources>
-   ```
+```json
+{ "expo": { "name": "My Quiz Manager" } }
+```
+
+Rebranding the app also means updating the static identity shown in Settings and in store listings:
+
+```typescript
+// src/constants/appIdentity.ts
+export const APP_IDENTITY = {
+  name: 'My Quiz Manager',
+  developer: 'GilmierDev',
+  copyright: '© 2026 GilmierDev',
+  repositoryUrl: 'https://github.com/gilmierdev/ChurchScoringManagement',
+  license: 'MIT',
+};
+```
+
+The application IDs live in `app.config.ts` and `app.json`. Changing an application ID after a store release creates a **new** app in the store, so treat it as a permanent decision.
 
 ### How to Change the Application Icon
 
-1. Replace the icon files located in `./assets/`:
+1. Replace the icon files in `./assets/`:
    * `./assets/icon.png` (1024x1024 PNG)
    * `./assets/android-icon-foreground.png` (432x432 PNG)
    * `./assets/android-icon-background.png` (432x432 PNG)
-   * `./assets/splash-icon.png` (Splash screen icon)
-2. Re-run prebuild to regenerate native mipmap assets:
+   * `./assets/android-icon-monochrome.png` (432x432 PNG, themed icons)
+   * `./assets/splash-icon.png`
+2. Regenerate the native assets:
    ```bash
-   npx expo prebuild --platform android
+   npm run prebuild
    ```
 
-### How to Create a Production Keystore for Release
+### How to Sign Release Builds
 
-To generate a custom private signing key:
+EAS manages signing automatically and stores credentials in its servers, so no keystore is committed. For a first production build, EAS will offer to generate one:
 
 ```bash
-keytool -genkeypair -v -storetype PKCS12 -keystore quiz-release-key.keystore -alias quiz-key-alias -keyalg RSA -keysize 2048 -validity 10000
+npx --yes eas-cli@latest credentials --platform android
 ```
 
-Place `quiz-release-key.keystore` in `android/app/` and update `android/app/build.gradle`:
+If you prefer a locally held key, generate one and keep it **outside** the repository — `.gitignore` already excludes `*.keystore`, `*.jks`, `*.p12`, and `*.key`:
 
-```groovy
-signingConfigs {
-    release {
-        storeFile file('quiz-release-key.keystore')
-        storePassword System.getenv("KEYSTORE_PASSWORD") ?: "your_password"
-        keyAlias 'quiz-key-alias'
-        keyPassword System.getenv("KEY_PASSWORD") ?: "your_password"
-    }
-}
-buildTypes {
-    release {
-        signingConfig signingConfigs.release
-        // ...
-    }
-}
+```bash
+keytool -genkeypair -v -storetype PKCS12 -keystore quiz-release-key.keystore \
+  -alias quiz-key-alias -keyalg RSA -keysize 2048 -validity 10000
 ```
+
+Back the keystore up somewhere separate. Losing it means you can no longer update the app on the store.
 
 ---
 
@@ -442,6 +469,7 @@ Backups are exported in versioned JSON format:
       "id": "e95adcf2-570a-41be-8ca0-6e4744d03612",
       "player_number": 1,
       "name": "John",
+      "initial_score": 0,
       "active": 1,
       "created_at": "2026-09-26T09:40:00.000Z",
       "updated_at": "2026-09-26T09:40:00.000Z"
@@ -454,34 +482,58 @@ Backups are exported in versioned JSON format:
 }
 ```
 
-* **Safety:** When importing, the JSON format is validated before opening a database transaction.
+* **Safety:** The payload is fully validated *before* a transaction opens, so an invalid file is rejected while the existing database is untouched.
 * **Confirmation:** The user is always prompted before existing records are overwritten.
-* **Atomicity:** The restore operation is wrapped in a database transaction (`withTransactionAsync`). If any record fails insertion, all changes are rolled back automatically.
+* **Atomicity:** The restore runs inside a transaction. If any record fails to insert, everything rolls back.
+* **Fidelity:** Group item points, counts, and `quiz_score` are preserved, not just the raw score rows.
+
+Validation rejects: unsupported versions, missing or non-array tables, duplicate record ids, duplicate player numbers, negative points, dangling references, group assignments whose group belongs to a different round, a player assigned twice in one round, and duplicate per-round scores.
+
+### Device Backup Behaviour
+
+On **Android**, `allowBackup` is `false`, so the database is not copied into Google device backups.
+
+On **iOS**, the app never uploads anything itself, but iOS may include local app data in the user's iCloud or computer backups. That behaviour is controlled by the operating system, not by the app. Anyone moving data between devices should use an exported backup file.
 
 ---
 
-## 10. Automated Tests & Acceptance Verification
+## 10. Tests
 
-All 12 required verification scenarios are covered in `tests/businessRules.test.ts`:
+70 tests run in Jest against an in-memory SQLite database (`sql.js`), so no emulator is needed.
 
-| # | Scenario | Status |
-|---|---|---|
-| 1 | Add player "John" and verify appearance | ✅ PASSED |
-| 2 | Allow duplicate name "John" with unique ID and sequence (`#002`) | ✅ PASSED |
-| 3 | Case-insensitive search finds both Johns independently | ✅ PASSED |
-| 4 | Create 4 groups; assign John #001 $\rightarrow$ Group 1, John #002 $\rightarrow$ Group 3 | ✅ PASSED |
-| 5 | Prevent duplicate assignment; moving player updates group correctly | ✅ PASSED |
-| 6 | Assign score $+20$; verify total score $= 20$ | ✅ PASSED |
-| 7 | Create next round, assign to Group 3, score $+15$; verify total $= 35$ | ✅ PASSED |
-| 8 | Edit round 2 score ($15 \rightarrow 25$); verify total $= 45$ (not $60$) | ✅ PASSED |
-| 9 | Reports sort players from Highest $\rightarrow$ Lowest | ✅ PASSED |
-| 10 | Equal scores share competition rank ($1, 2, 2, 4$) without altering names | ✅ PASSED |
-| 11 | Editing player name preserves ID and all historical scores | ✅ PASSED |
-| 12 | Locked rounds reject score edits; unlocking allows edits | ✅ PASSED |
-| 13 | Backup export and atomic restore reproduces exact database state | ✅ PASSED |
-| 14 | Input validation rules for names, scores, and group counts | ✅ PASSED |
-
-Run the test suite anytime with:
 ```bash
 npm test
 ```
+
+### Core business rules
+
+`tests/businessRules.test.ts` covers the product's fundamental guarantees:
+
+| # | Scenario |
+|---|---|
+| 1 | Add player "John" and verify appearance |
+| 2 | Allow duplicate name "John" with unique ID and sequence (`#002`) |
+| 3 | Case-insensitive search finds both Johns independently |
+| 4 | Create 4 groups; assign John #001 → Group 1, John #002 → Group 3 |
+| 5 | Prevent duplicate assignment; moving player updates group correctly |
+| 6 | Assign score `+20`; verify total score `= 20` |
+| 7 | Create next round, assign to Group 3, score `+15`; verify total `= 35` |
+| 8 | Edit round 2 score (`15 → 25`); verify total `= 45` (not `60`) |
+| 9 | Reports sort players from highest to lowest |
+| 10 | Equal scores share rank (`1, 2, 2, 4`) without altering names |
+| 11 | Editing player name preserves ID and all historical scores |
+| 12 | Locked rounds reject score edits; unlocking allows edits |
+| 13 | Backup export and atomic restore reproduces exact database state |
+| 14 | Input validation for names, scores, and group counts |
+
+### Production readiness
+
+`tests/productionReadiness.test.ts` guards the data-integrity and privacy work:
+
+* **Migrations** — a fresh database reaches the configured schema version; a legacy v1 database containing duplicate player numbers is repaired instead of rejected; migrating twice is idempotent; the unique index is enforced; a database from a newer app version is refused rather than downgraded.
+* **Backup validation** — malformed payloads, wrong versions, duplicate ids, duplicate player numbers, negative scores, dangling references, cross-round group assignments, double assignments, and duplicate per-round scores are all rejected.
+* **Restore fidelity** — a restore preserves `groups.quiz_score` and the derived group total, and a rejected backup leaves existing data untouched.
+* **Scoring invariants** — editing one member's score does not double count the items bonus; moving a player between groups never rewrites their score; removing a player re-derives the group total while keeping the score they already earned.
+* **Error sanitisation** — `UserFacingError` messages reach the user, while internal details such as SQL constraint text never do.
+
+See `TESTING.md` for the full release checklist.

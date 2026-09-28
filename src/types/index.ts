@@ -163,4 +163,4 @@ export interface BackupData {
   scores: Score[];
 }
 
-export type MainTab = 'home' | 'players' | 'round' | 'reports' | 'history' | 'settings';
+export type MainTab = 'home' | 'players' | 'round' | 'reports' | 'history' | 'wheel' | 'settings';

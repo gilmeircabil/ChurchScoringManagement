@@ -44,11 +44,13 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({
 }) => {
   const [pointsText, setPointsText] = useState(String(currentScore || ''));
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [addedSteps, setAddedSteps] = useState<number[]>([]);
 
   useEffect(() => {
     if (visible) {
       setPointsText(currentScore === 0 ? '' : String(currentScore));
       setErrorMessage(null);
+      setAddedSteps([]);
     }
   }, [visible, currentScore]);
 
@@ -77,16 +79,13 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({
     const current = parseInt(pointsText, 10) || 0;
     const nextVal = Math.max(0, current + amount);
     setPointsText(nextVal === 0 ? '' : String(nextVal));
+    setAddedSteps((prev) => [...prev, amount]);
     setErrorMessage(null);
   };
 
-  const handleSetExact = (val: number) => {
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-    setPointsText(val === 0 ? '' : String(val));
-    setErrorMessage(null);
-  };
+  const parsedPoints = pointsText.trim() === '' ? 0 : parseInt(pointsText, 10) || 0;
+  const diff = parsedPoints - currentScore;
+  const isChanged = diff !== 0;
 
   const modalTitle = title || (currentScore > 0 ? 'Edit Round Score' : 'Enter Round Score');
 
@@ -130,6 +129,55 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({
             </View>
           ) : null}
 
+          {/* RECORDED SCORE BANNER (At the top of adding score) */}
+          <View style={styles.recordedScoreCard}>
+            <View style={styles.recordedScoreMainRow}>
+              <View style={styles.recordedScoreLeft}>
+                <View style={styles.recordIconCircle}>
+                  <Ionicons name="trophy" size={16} color={COLORS.primary} />
+                </View>
+                <View>
+                  <Text style={styles.recordLabel}>RECORDED SCORE</Text>
+                  <Text style={styles.recordValue}>{currentScore} pts</Text>
+                </View>
+              </View>
+
+              {isChanged ? (
+                <View style={[styles.diffBadge, diff > 0 ? styles.diffBadgeAdd : styles.diffBadgeMinus]}>
+                  <Ionicons
+                    name={diff > 0 ? 'arrow-up' : 'arrow-down'}
+                    size={12}
+                    color={diff > 0 ? COLORS.onSuccessContainer : COLORS.onDangerContainer}
+                  />
+                  <Text style={[styles.diffBadgeText, diff > 0 ? styles.diffTextAdd : styles.diffTextMinus]}>
+                    {diff > 0 ? `+${diff}` : `${diff}`} pts
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.onRecordBadge}>
+                  <Ionicons name="checkmark-circle" size={12} color={COLORS.success} />
+                  <Text style={styles.onRecordText}>On Record</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Addition Tape / Step History if user added points */}
+            {addedSteps.length > 0 && (
+              <View style={styles.stepsTapeContainer}>
+                <Text style={styles.stepsTapeLabel}>Records Added:</Text>
+                <View style={styles.stepsTapeRow}>
+                  {addedSteps.map((step, idx) => (
+                    <View key={idx} style={styles.stepChip}>
+                      <Text style={styles.stepChipText}>
+                        {step > 0 ? `+${step}` : `${step}`}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+          </View>
+
           <Text style={styles.label}>Points</Text>
           <View style={styles.inputContainer}>
             <TouchableOpacity
@@ -146,6 +194,7 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({
                 value={pointsText}
                 onChangeText={(text) => {
                   setPointsText(text);
+                  setAddedSteps([]);
                   if (errorMessage) setErrorMessage(null);
                 }}
                 placeholder="0"
@@ -161,6 +210,7 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({
                   onPress={() => {
                     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                     setPointsText('');
+                    setAddedSteps([]);
                   }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
@@ -193,46 +243,6 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({
                 <Text style={styles.presetText}>+{pts}</Text>
               </TouchableOpacity>
             ))}
-          </View>
-
-          {/* Quick Adjust / Deduct Presets */}
-          <Text style={styles.presetSectionLabel}>Quick Adjust</Text>
-          <View style={styles.presetsRow}>
-            <TouchableOpacity
-              style={[styles.presetButton, styles.presetButtonAlt]}
-              onPress={() => handleQuickAdd(-5)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.presetText, styles.presetTextAlt]}>-5</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.presetButton, styles.presetButtonAlt]}
-              onPress={() => handleQuickAdd(-10)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.presetText, styles.presetTextAlt]}>-10</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.presetButton, styles.presetButtonNeutral]}
-              onPress={() => handleSetExact(0)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.presetText, styles.presetTextNeutral]}>Set 0</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.presetButton, styles.presetButtonNeutral]}
-              onPress={() => handleSetExact(10)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.presetText, styles.presetTextNeutral]}>Set 10</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.presetButton, styles.presetButtonNeutral]}
-              onPress={() => handleSetExact(20)}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.presetText, styles.presetTextNeutral]}>Set 20</Text>
-            </TouchableOpacity>
           </View>
 
           <View style={styles.buttonRow}>
@@ -334,6 +344,112 @@ const styles = StyleSheet.create({
     marginRight: 8,
     flexShrink: 1,
   },
+  recordedScoreCard: {
+    backgroundColor: COLORS.surfaceVariant,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 16,
+  },
+  recordedScoreMainRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  recordedScoreLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  recordIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: COLORS.primaryContainer,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  recordLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: COLORS.textSecondary,
+    letterSpacing: 0.6,
+  },
+  recordValue: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.textPrimary,
+  },
+  diffBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
+  },
+  diffBadgeAdd: {
+    backgroundColor: COLORS.successContainer,
+  },
+  diffBadgeMinus: {
+    backgroundColor: COLORS.dangerContainer,
+  },
+  diffBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  diffTextAdd: {
+    color: COLORS.onSuccessContainer,
+  },
+  diffTextMinus: {
+    color: COLORS.onDangerContainer,
+  },
+  onRecordBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.successContainer,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    gap: 4,
+  },
+  onRecordText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.onSuccessContainer,
+  },
+  stepsTapeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    gap: 6,
+  },
+  stepsTapeLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  stepsTapeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  stepChip: {
+    backgroundColor: COLORS.primaryContainer,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  stepChipText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: COLORS.primary,
+  },
   label: {
     fontSize: 12,
     fontWeight: '800',
@@ -421,20 +537,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     color: COLORS.onPrimaryContainer,
-  },
-  presetButtonAlt: {
-    backgroundColor: COLORS.warningContainer,
-  },
-  presetTextAlt: {
-    color: COLORS.onWarningContainer,
-  },
-  presetButtonNeutral: {
-    backgroundColor: COLORS.surfaceVariant,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-  },
-  presetTextNeutral: {
-    color: COLORS.textPrimary,
   },
   buttonRow: {
     flexDirection: 'row',

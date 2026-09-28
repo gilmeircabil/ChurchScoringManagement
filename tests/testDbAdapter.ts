@@ -10,11 +10,25 @@ export class SqlJsTestConnection implements IDatabaseConnection {
   }
 
   static async create(): Promise<SqlJsTestConnection> {
-    const SQL = await initSqlJs();
-    const db = new SQL.Database();
-    const conn = new SqlJsTestConnection(db);
+    const conn = await SqlJsTestConnection.createRaw();
     await initializeDatabase(conn);
     return conn;
+  }
+
+  /**
+   * Creates an empty connection WITHOUT running migrations, so a test can stage
+   * an older or hand-built schema and then migrate it explicitly.
+   */
+  static async createRaw(): Promise<SqlJsTestConnection> {
+    const SQL = await initSqlJs();
+    const db = new SQL.Database();
+    return new SqlJsTestConnection(db);
+  }
+
+  /** Reads `PRAGMA user_version`. */
+  async getUserVersion(): Promise<number> {
+    const row = await this.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+    return Number(row?.user_version ?? 0);
   }
 
   async execAsync(sql: string): Promise<void> {

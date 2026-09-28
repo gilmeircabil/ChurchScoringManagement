@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import { COLORS } from '../constants/colors';
 import { ExcelParseResult, downloadExcelTemplate } from '../utils/excelImport';
 import { pluralize } from '../utils/formatters';
+import { logError } from '../utils/logger';
 
 interface ExcelImportModalProps {
   visible: boolean;
@@ -50,7 +51,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       await onConfirmImport();
       onClose();
     } catch (err) {
-      console.error('Failed to import players:', err);
+      logError('Failed to import players:', err);
     } finally {
       setImporting(false);
     }
@@ -64,7 +65,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
     } catch (err) {
-      console.error('Download template failed:', err);
+      logError('Download template failed:', err);
     } finally {
       setDownloadingTemplate(false);
     }

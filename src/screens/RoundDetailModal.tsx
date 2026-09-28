@@ -20,6 +20,8 @@ import { ScoreModal } from '../components/ScoreModal';
 import { GroupItemsModal } from '../components/GroupItemsModal';
 import { RoundStatusBadge } from '../components/RoundStatusBadge';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
+import { logError } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 interface RoundDetailModalProps {
   visible: boolean;
@@ -54,7 +56,7 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
       setGroupDetails(details);
       setCounts(roundCounts);
     } catch (err) {
-      console.error('Failed to load round details:', err);
+      logError('Failed to load round details:', err);
     } finally {
       setLoading(false);
     }
@@ -87,7 +89,7 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
       setScoringGroup(null);
       loadDetails(round.id);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Unable to save group score.');
+      Alert.alert('Error', getErrorMessage(err, 'Unable to save group score.', 'RoundDetailModal'));
     }
   };
 
@@ -132,7 +134,7 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
       setSelectedGroupForItems(null);
       loadDetails(round.id);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Unable to update group items.');
+      Alert.alert('Error', getErrorMessage(err, 'Unable to update group items.', 'RoundDetailModal'));
     }
   };
 

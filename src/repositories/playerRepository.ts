@@ -85,20 +85,28 @@ export class PlayerRepository {
 
   async createPlayer(name: string, initialScore = 0): Promise<Player> {
     const id = generateId();
-    const playerNumber = await this.getNextPlayerNumber();
     const now = new Date().toISOString();
     const cleanName = name.trim();
     const safeInitialScore = Math.max(0, initialScore || 0);
 
-    await this.db.runAsync(
-      'INSERT INTO players (id, player_number, name, initial_score, active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)',
-      id,
-      playerNumber,
-      cleanName,
-      safeInitialScore,
-      now,
-      now
-    );
+    // The number is allocated inside the transaction: `player_number` has a
+    // UNIQUE index, and reading MAX() outside a transaction would let two
+    // concurrent creates pick the same value and fail on the constraint.
+    const playerNumber = await this.db.withTransactionAsync(async () => {
+      const nextNumber = await this.getNextPlayerNumber();
+
+      await this.db.runAsync(
+        'INSERT INTO players (id, player_number, name, initial_score, active, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)',
+        id,
+        nextNumber,
+        cleanName,
+        safeInitialScore,
+        now,
+        now
+      );
+
+      return nextNumber;
+    });
 
     return {
       id,

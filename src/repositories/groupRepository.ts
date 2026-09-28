@@ -1,6 +1,13 @@
 import { IDatabaseConnection } from '../database/types';
-import { Group, AssignedMember, GroupDetail, Player, Score } from '../types';
+import { Group, AssignedMember, GroupDetail, Player } from '../types';
 import { generateId } from '../utils/idGenerator';
+import { UserFacingError } from '../utils/errors';
+import {
+  computeItemsBonus,
+  ensureScoreRow,
+  recomputeGroupQuizScore,
+  syncMemberScoresToGroupCarry,
+} from './groupScoring';
 
 export class GroupRepository {
   private db: IDatabaseConnection;
@@ -74,8 +81,7 @@ export class GroupRepository {
       const book_points = g.book_points ?? 10;
       const pen_points = g.pen_points ?? 5;
       const paper_points = g.paper_points ?? 5;
-      const items_bonus =
-        book_count * book_points + pen_count * pen_points + paper_count * paper_points;
+      const items_bonus = computeItemsBonus(g);
       const total_score = quiz_score + items_bonus;
 
       const book_name = g.book_name || 'Book';
@@ -151,6 +157,11 @@ export class GroupRepository {
   /**
    * Assigns a player to a group in a round.
    * If the player was previously in another group in the same round, replaces it atomically.
+   *
+   * The player's own score for the round is deliberately left untouched: moving
+   * a player between groups must not rewrite a score that has already been
+   * recorded. A missing score row is created at zero so the player still appears
+   * in the round's score list.
    */
   async assignPlayerToGroup(roundId: string, groupId: string, playerId: string): Promise<void> {
     const id = generateId();
@@ -163,8 +174,15 @@ export class GroupRepository {
         roundId
       );
       if (round?.status === 'LOCKED') {
-        throw new Error('This round is locked. Unlock the round before making changes.');
+        throw new UserFacingError('This round is locked. Unlock the round before making changes.');
       }
+
+      // Remember the previous group so its quiz total can be re-derived.
+      const previous = await this.db.getFirstAsync<{ group_id: string }>(
+        'SELECT group_id FROM group_members WHERE round_id = ? AND player_id = ?',
+        roundId,
+        playerId
+      );
 
       // Remove any existing assignment for this player in this round
       await this.db.runAsync(
@@ -183,47 +201,24 @@ export class GroupRepository {
         now
       );
 
-      // Ensure score row exists and matches group's current total score (quiz_score + items_bonus)
-      const targetGroup = await this.db.getFirstAsync<Group>(
-        'SELECT * FROM groups WHERE id = ?',
-        groupId
-      );
-      const bCount = targetGroup?.book_count ?? 0;
-      const pCount = targetGroup?.pen_count ?? 0;
-      const paCount = targetGroup?.paper_count ?? 0;
-      const bPts = targetGroup?.book_points ?? 10;
-      const pPts = targetGroup?.pen_points ?? 5;
-      const paPts = targetGroup?.paper_points ?? 5;
-      const itemsBonus = bCount * bPts + pCount * pPts + paCount * paPts;
-      const groupScore = (targetGroup?.quiz_score ?? 0) + itemsBonus;
+      // Only seed a missing score row; never overwrite an existing one.
+      await ensureScoreRow(this.db, roundId, playerId, now);
 
-      const existingScore = await this.db.getFirstAsync<{ id: string }>(
-        'SELECT id FROM scores WHERE round_id = ? AND player_id = ?',
-        roundId,
-        playerId
-      );
-      if (!existingScore) {
-        const scoreId = generateId();
-        await this.db.runAsync(
-          'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-          scoreId,
-          roundId,
-          playerId,
-          groupScore,
-          now,
-          now
-        );
-      } else if (groupScore > 0) {
-        await this.db.runAsync(
-          'UPDATE scores SET points = ?, updated_at = ? WHERE id = ?',
-          groupScore,
-          now,
-          existingScore.id
-        );
+      if (previous && previous.group_id !== groupId) {
+        await recomputeGroupQuizScore(this.db, roundId, previous.group_id);
       }
+      await recomputeGroupQuizScore(this.db, roundId, groupId);
     });
   }
 
+  /**
+   * Removes a player from every group in a round.
+   *
+   * The player's score row for the round is kept: it is part of their permanent
+   * history and feeds the cumulative total, so removing a group assignment must
+   * not silently discard points the user has already recorded. The source
+   * group's quiz total is re-derived so the group view stays consistent.
+   */
   async removePlayerFromRound(roundId: string, playerId: string): Promise<void> {
     await this.db.withTransactionAsync(async () => {
       const round = await this.db.getFirstAsync<{ status: string }>(
@@ -231,8 +226,14 @@ export class GroupRepository {
         roundId
       );
       if (round?.status === 'LOCKED') {
-        throw new Error('This round is locked. Unlock the round before making changes.');
+        throw new UserFacingError('This round is locked. Unlock the round before making changes.');
       }
+
+      const previous = await this.db.getFirstAsync<{ group_id: string }>(
+        'SELECT group_id FROM group_members WHERE round_id = ? AND player_id = ?',
+        roundId,
+        playerId
+      );
 
       await this.db.runAsync(
         'DELETE FROM group_members WHERE round_id = ? AND player_id = ?',
@@ -240,18 +241,8 @@ export class GroupRepository {
         playerId
       );
 
-      // Also clean up score if 0 points
-      const scoreRow = await this.db.getFirstAsync<{ points: number }>(
-        'SELECT points FROM scores WHERE round_id = ? AND player_id = ?',
-        roundId,
-        playerId
-      );
-      if (scoreRow && scoreRow.points === 0) {
-        await this.db.runAsync(
-          'DELETE FROM scores WHERE round_id = ? AND player_id = ?',
-          roundId,
-          playerId
-        );
+      if (previous) {
+        await recomputeGroupQuizScore(this.db, roundId, previous.group_id);
       }
     });
   }
@@ -278,14 +269,14 @@ export class GroupRepository {
       'SELECT * FROM groups WHERE id = ?',
       groupId
     );
-    if (!group) throw new Error('Group not found.');
+    if (!group) throw new UserFacingError('Group not found.');
 
     const round = await this.db.getFirstAsync<{ status: string }>(
       'SELECT status FROM rounds WHERE id = ?',
       group.round_id
     );
     if (round?.status === 'LOCKED') {
-      throw new Error('This round is locked. Unlock the round before making changes.');
+      throw new UserFacingError('This round is locked. Unlock the round before making changes.');
     }
 
     const bCount = Math.max(0, data.book_count || 0);
@@ -308,10 +299,6 @@ export class GroupRepository {
     const paName = (data.paper_name && data.paper_name.trim()) || group.paper_name || 'Paper';
     const groupName = data.name !== undefined ? (data.name?.trim() || null) : (group.name ?? null);
 
-    const totalItemsBonus = bCount * bPts + pCount * pPts + paCount * paPts;
-    const quizScore = group.quiz_score ?? 0;
-    const totalPlayerPoints = quizScore + totalItemsBonus;
-
     await this.db.withTransactionAsync(async () => {
       await this.db.runAsync(
         `UPDATE groups 
@@ -330,41 +317,10 @@ export class GroupRepository {
         groupId
       );
 
-      // Carry total is added to player also: sync all members of this group in this round
-      const members = await this.db.getAllAsync<{ player_id: string }>(
-        'SELECT player_id FROM group_members WHERE round_id = ? AND group_id = ?',
-        group.round_id,
-        groupId
-      );
-
-      const now = new Date().toISOString();
-      for (const m of members) {
-        const existing = await this.db.getFirstAsync<Score>(
-          'SELECT id FROM scores WHERE round_id = ? AND player_id = ?',
-          group.round_id,
-          m.player_id
-        );
-
-        if (existing) {
-          await this.db.runAsync(
-            'UPDATE scores SET points = ?, updated_at = ? WHERE id = ?',
-            totalPlayerPoints,
-            now,
-            existing.id
-          );
-        } else {
-          const id = generateId();
-          await this.db.runAsync(
-            'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-            id,
-            group.round_id,
-            m.player_id,
-            totalPlayerPoints,
-            now,
-            now
-          );
-        }
-      }
+      // Carry total is added to player also: sync all members of this group in
+      // this round. `quiz_score` is intentionally left as-is: changing the items
+      // bonus must not change the group's own quiz total.
+      await syncMemberScoresToGroupCarry(this.db, group.round_id, groupId);
     });
   }
 
@@ -387,7 +343,7 @@ export class GroupRepository {
       roundId
     );
     if (round?.status === 'LOCKED') {
-      throw new Error('This round is locked. Unlock the round before making changes.');
+      throw new UserFacingError('This round is locked. Unlock the round before making changes.');
     }
 
     const bPts = Math.max(0, rules.book_points);
@@ -409,48 +365,14 @@ export class GroupRepository {
         roundId
       );
 
-      // Re-synchronize member scores for all groups in this round
-      const groupsInRound = await this.db.getAllAsync<Group>(
-        'SELECT * FROM groups WHERE round_id = ?',
+      // Re-synchronize member carries for all groups in this round. Each group
+      // keeps its own quiz_score; only the bonus component changes.
+      const groupsInRound = await this.db.getAllAsync<{ id: string }>(
+        'SELECT id FROM groups WHERE round_id = ?',
         roundId
       );
-      const now = new Date().toISOString();
       for (const g of groupsInRound) {
-        const itemsBonus = (g.book_count ?? 0) * bPts + (g.pen_count ?? 0) * pPts + (g.paper_count ?? 0) * paPts;
-        const totalScore = (g.quiz_score ?? 0) + itemsBonus;
-
-        const members = await this.db.getAllAsync<{ player_id: string }>(
-          'SELECT player_id FROM group_members WHERE round_id = ? AND group_id = ?',
-          roundId,
-          g.id
-        );
-
-        for (const m of members) {
-          const existing = await this.db.getFirstAsync<Score>(
-            'SELECT id FROM scores WHERE round_id = ? AND player_id = ?',
-            roundId,
-            m.player_id
-          );
-          if (existing) {
-            await this.db.runAsync(
-              'UPDATE scores SET points = ?, updated_at = ? WHERE id = ?',
-              totalScore,
-              now,
-              existing.id
-            );
-          } else {
-            const id = generateId();
-            await this.db.runAsync(
-              'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-              id,
-              roundId,
-              m.player_id,
-              totalScore,
-              now,
-              now
-            );
-          }
-        }
+        await syncMemberScoresToGroupCarry(this.db, roundId, g.id);
       }
     });
   }

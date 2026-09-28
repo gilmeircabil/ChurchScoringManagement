@@ -25,14 +25,15 @@ import { ConfirmationModal } from '../components/ConfirmationModal';
 import { UnassignedListModal } from '../components/UnassignedListModal';
 import { RoundStatusBadge } from '../components/RoundStatusBadge';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
-import { SearchBar } from '../components/SearchBar';
 import { getQuizService } from '../services/quizService';
 import { Round, Group, GroupDetail, Player, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 import { APP_CONFIG } from '../constants/config';
 import { formatDateDisplay, getTodayISODate, pluralize } from '../utils/formatters';
 import { validateGroupCount } from '../utils/validation';
-import { getDefaultItemPoints } from '../utils/itemPointsStorage';
+import { getDefaultItemRules } from '../utils/itemPointsStorage';
+import { logError } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 interface RoundScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -55,10 +56,6 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     assignedCount: number;
     unassignedCount: number;
   }>({ totalPlayers: 0, assignedCount: 0, unassignedCount: 0 });
-
-  // Player search in Grouping mode
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Player[]>([]);
 
   // Modals
   const [isNewRoundModalVisible, setIsNewRoundModalVisible] = useState(false);
@@ -110,7 +107,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
         setCounts(roundCounts);
       }
     } catch (err) {
-      console.error('Failed to load round data:', err);
+      logError('Failed to load round data:', err);
     } finally {
       setLoading(false);
     }
@@ -119,22 +116,6 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
   useEffect(() => {
     loadRoundData(targetRoundId);
   }, [loadRoundData, targetRoundId]);
-
-  // Handle Search for players
-  const handleSearch = async (query: string) => {
-    setSearchQuery(query);
-    if (!query.trim()) {
-      setSearchResults([]);
-      return;
-    }
-    try {
-      const service = await getQuizService();
-      const results = await service.players.searchPlayers(query, true);
-      setSearchResults(results);
-    } catch (err) {
-      console.error('Search failed:', err);
-    }
-  };
 
   // Open assign dialog for a player
   const handlePlayerTap = async (player: Player) => {
@@ -154,7 +135,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
 
       setSelectedPlayerForAssign(player);
     } catch (err) {
-      console.error('Failed to check player assignment:', err);
+      logError('Failed to check player assignment:', err);
     }
   };
 
@@ -166,11 +147,9 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       await service.groups.assignPlayerToGroup(round.id, groupId, selectedPlayerForAssign.id);
       setSelectedPlayerForAssign(null);
       setCurrentAssignment(null);
-      setSearchQuery('');
-      setSearchResults([]);
       loadRoundData(round.id);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to assign player.');
+      Alert.alert('Error', getErrorMessage(err, 'Failed to assign player.', 'RoundScreen'));
     }
   };
 
@@ -184,7 +163,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       setCurrentAssignment(null);
       loadRoundData(round.id);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Failed to remove player from round.');
+      Alert.alert('Error', getErrorMessage(err, 'Failed to remove player from round.', 'RoundScreen'));
     }
   };
 
@@ -198,12 +177,12 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     }
 
     try {
-      const defaultPoints = await getDefaultItemPoints();
+      const defaultRules = await getDefaultItemRules();
       const service = await getQuizService();
       const newRound = await service.rounds.createRound(
         newRoundDate.trim(),
         groupCountNum,
-        defaultPoints
+        defaultRules
       );
       setIsNewRoundModalVisible(false);
       setNewRoundError(null);
@@ -255,7 +234,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       setSelectedGroupForItems(null);
       loadRoundData(round.id);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Unable to update group items.');
+      Alert.alert('Error', getErrorMessage(err, 'Unable to update group items.', 'RoundScreen'));
     }
   };
 
@@ -329,7 +308,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       setScoringGroup(null);
       loadRoundData(round.id);
     } catch (err: any) {
-      Alert.alert('Error', err.message || 'Unable to save group score.');
+      Alert.alert('Error', getErrorMessage(err, 'Unable to save group score.', 'RoundScreen'));
     }
   };
 
@@ -364,7 +343,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
       loadRoundData(round.id);
     } catch (err: any) {
       loadRoundData(round.id);
-      Alert.alert('Error', err.message || 'Unable to update group score.');
+      Alert.alert('Error', getErrorMessage(err, 'Unable to update group score.', 'RoundScreen'));
     }
   };
 
@@ -543,65 +522,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
           </View>
         )}
 
-        {/* SEARCH BAR FOR QUICK GROUPING (WHEN NOT LOCKED) */}
-        {!isLocked && (
-          <View style={styles.searchSection}>
-            <SearchBar
-              value={searchQuery}
-              onChangeText={handleSearch}
-              placeholder="Search player to assign or move..."
-              matchCount={searchResults.length}
-              showMatchCount={searchQuery.trim().length > 0}
-            />
 
-            {/* SEARCH RESULTS DROPDOWN */}
-            {searchQuery.trim().length > 0 && (
-              <View style={styles.searchResultsBox}>
-                {searchResults.length > 0 ? (
-                  <>
-                    <View style={styles.searchResultsHeader}>
-                      <Text style={styles.searchResultsTitle}>Select player to assign</Text>
-                      <Text style={styles.searchResultsCountBadge}>
-                        {searchResults.length} {pluralize(searchResults.length, 'player')}
-                      </Text>
-                    </View>
-                    <ScrollView
-                      style={styles.searchResultsScroll}
-                      nestedScrollEnabled
-                      keyboardShouldPersistTaps="handled"
-                    >
-                      {searchResults.map((p) => (
-                        <TouchableOpacity
-                          key={p.id}
-                          style={styles.searchResultItem}
-                          onPress={() => handlePlayerTap(p)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.searchResultLeft}>
-                            <View style={styles.searchResultAvatar}>
-                              <Text style={styles.searchResultAvatarText}>
-                                {p.name.charAt(0).toUpperCase()}
-                              </Text>
-                            </View>
-                            <Text style={styles.searchResultName}>{p.name}</Text>
-                          </View>
-                          <PlayerIdBadge playerNumber={p.player_number} />
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </>
-                ) : (
-                  <View style={styles.searchEmptyBox}>
-                    <Ionicons name="search-outline" size={20} color={COLORS.textMuted} />
-                    <Text style={styles.searchEmptyText}>
-                      No players matching "{searchQuery.trim()}"
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
-          </View>
-        )}
 
         {/* GROUPS LIST */}
         <View style={styles.groupsContainer}>
@@ -1026,94 +947,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.onAccentContainer,
   },
-  searchSection: {
-    marginBottom: 14,
-    position: 'relative',
-    zIndex: 10,
-  },
-  searchResultsBox: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-    marginTop: 6,
-    padding: 8,
-    maxHeight: 240,
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-  },
-  searchResultsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    marginBottom: 4,
-  },
-  searchResultsTitle: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  searchResultsCountBadge: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.primary,
-  },
-  searchResultsScroll: {
-    maxHeight: 180,
-  },
-  searchResultItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-  },
-  searchResultLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  searchResultAvatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: COLORS.primaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  searchResultAvatarText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  searchResultName: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-  },
-  searchEmptyBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    gap: 8,
-  },
-  searchEmptyText: {
-    fontSize: 13,
-    color: COLORS.textMuted,
-    fontWeight: '500',
-  },
+
   groupsContainer: {
     gap: 14,
   },

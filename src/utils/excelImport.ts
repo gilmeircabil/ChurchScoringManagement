@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { logError } from './logger';
 
 export interface ParsedPlayerRow {
   rowNumber: number;
@@ -229,7 +230,8 @@ export function parseExcelOrCsv(
       invalidRows,
       duplicateCount,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    logError('Failed to parse spreadsheet:', err);
     return {
       success: false,
       fileName,
@@ -237,22 +239,9 @@ export function parseExcelOrCsv(
       validRows: [],
       invalidRows: [],
       duplicateCount: 0,
-      error: `Failed to parse spreadsheet: ${err.message || 'Unknown file format error'}`,
+      error: 'This file could not be read as a spreadsheet. Please check the format and try again.',
     };
   }
-}
-
-/**
- * Generates sample Excel template structure data.
- */
-export function getSampleExcelRows(): { Name: string; 'Initial Score': number }[] {
-  return [
-    { Name: 'John Doe', 'Initial Score': 25 },
-    { Name: 'Sarah Smith', 'Initial Score': 15 },
-    { Name: 'Michael Brown', 'Initial Score': 0 },
-    { Name: 'David Lee', 'Initial Score': 10 },
-    { Name: 'Mary Johnson', 'Initial Score': 5 },
-  ];
 }
 
 /**
@@ -320,16 +309,9 @@ export async function downloadExcelTemplate(): Promise<{ success: boolean; fileP
 
     return { success: true };
   } catch (err) {
-    console.error('Failed to export Excel template:', err);
+    logError('Failed to export Excel template:', err);
     return { success: false };
   }
-}
-
-/**
- * Returns plain CSV text template for easy copy/paste.
- */
-export function getSampleCsvTemplate(): string {
-  return `Name,Initial Score\nJohn Doe,25\nSarah Smith,15\nMichael Brown,0\nDavid Lee,10\nMary Johnson,5\n`;
 }
 
 /**
@@ -338,7 +320,7 @@ export function getSampleCsvTemplate(): string {
 export async function readUploadedSpreadsheet(file: {
   uri: string;
   name: string;
-  file?: any;
+  file?: File;
 }): Promise<ExcelParseResult> {
   try {
     if (typeof window !== 'undefined' && (file.file || file.uri?.startsWith('blob:') || file.uri?.startsWith('data:'))) {
@@ -357,7 +339,8 @@ export async function readUploadedSpreadsheet(file: {
       encoding: FileSystem.EncodingType.Base64,
     });
     return parseExcelOrCsv(base64, file.name, 'base64');
-  } catch (err: any) {
+  } catch (err: unknown) {
+    logError('Failed to read spreadsheet file:', err);
     return {
       success: false,
       fileName: file.name,
@@ -365,7 +348,7 @@ export async function readUploadedSpreadsheet(file: {
       validRows: [],
       invalidRows: [],
       duplicateCount: 0,
-      error: `Failed to read spreadsheet file: ${err.message || 'Unknown file error'}`,
+      error: 'The spreadsheet file could not be opened. Please try selecting it again.',
     };
   }
 }

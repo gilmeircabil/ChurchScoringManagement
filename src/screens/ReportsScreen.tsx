@@ -21,6 +21,8 @@ import { ReportItem, GroupReportItem, Round, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
 import { formatDateDisplay, pluralize } from '../utils/formatters';
 import { exportReportToExcel } from '../utils/excelExport';
+import { logError } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 interface ReportsScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -50,7 +52,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
         setSelectedRoundId(rounds[0].id);
       }
     } catch (err) {
-      console.error('Failed to load rounds for reports:', err);
+      logError('Failed to load rounds for reports:', err);
     }
   }, [selectedRoundId]);
 
@@ -78,7 +80,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
         }
       }
     } catch (err) {
-      console.error('Failed to load report data:', err);
+      logError('Failed to load report data:', err);
     } finally {
       setLoading(false);
     }
@@ -139,8 +141,8 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
         Alert.alert('Export Error', res.error);
       }
     } catch (err: any) {
-      console.error('Report Excel export error:', err);
-      Alert.alert('Export Failed', err.message || 'Unable to export report to Excel.');
+      logError('Report Excel export error:', err);
+      Alert.alert('Export Failed', getErrorMessage(err, 'Unable to export report to Excel.', 'ReportsScreen'));
     } finally {
       setIsExporting(false);
     }

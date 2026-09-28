@@ -3,6 +3,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { PlayerWithStats, ReportItem, GroupReportItem, BackupData } from '../types';
 import { formatPlayerIdentifier, formatDateDisplay } from './formatters';
+import { logError } from './logger';
 
 /**
  * Saves an XLSX workbook cross-platform:
@@ -59,9 +60,12 @@ export async function saveAndShareExcelFile(
     }
 
     return { success: true, filePath };
-  } catch (err: any) {
-    console.error('Failed to export Excel file:', err);
-    return { success: false, error: err.message || 'Unknown export error' };
+  } catch (err: unknown) {
+    logError('Failed to export Excel file:', err);
+    return {
+      success: false,
+      error: 'The spreadsheet could not be saved. Please try again.',
+    };
   }
 }
 

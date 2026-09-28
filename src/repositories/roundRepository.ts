@@ -1,6 +1,7 @@
 import { IDatabaseConnection } from '../database/types';
 import { Round, RoundStatus, RoundHistoryItem, ItemPointsConfig, ItemRuleConfig } from '../types';
 import { generateId } from '../utils/idGenerator';
+import { UserFacingError } from '../utils/errors';
 
 export class RoundRepository {
   private db: IDatabaseConnection;
@@ -134,7 +135,7 @@ export class RoundRepository {
         "SELECT id FROM rounds WHERE status = 'ACTIVE' LIMIT 1"
       );
       if (active) {
-        throw new Error(
+        throw new UserFacingError(
           'A round is currently in progress. Lock or finish it before clearing history.'
         );
       }

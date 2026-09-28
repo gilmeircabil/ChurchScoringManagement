@@ -1,0 +1,15 @@
+{
+  "//": "Typechecks the Node-side Expo config (app.config.ts) separately so the React Native app keeps a clean, Node-global-free type environment.",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true,
+    "target": "ESNext",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["app.config.ts"]
+}

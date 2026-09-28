@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   Modal,
+  Linking,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,18 +22,43 @@ import { DestructiveConfirmModal } from '../components/DestructiveConfirmModal';
 import { StatusBanner, StatusMessage } from '../components/StatusBanner';
 import { getQuizService } from '../services/quizService';
 import { COLORS } from '../constants/colors';
-import { APP_CONFIG } from '../constants/config';
+import { APP_IDENTITY } from '../constants/appIdentity';
 import { BackupData } from '../types';
+import { formatAppVersion, getAppVersionInfo } from '../utils/appVersion';
 import { getDefaultItemRules, saveDefaultItemRules } from '../utils/itemPointsStorage';
 import { exportDatabaseBackupToExcel } from '../utils/excelExport';
+import { logError } from '../utils/logger';
+import { getErrorMessage } from '../utils/errors';
 
 interface SettingsScreenProps {
   onBack: () => void;
+  onReplayIntro?: () => void;
 }
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplayIntro }) => {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<StatusMessage>(null);
+  const appVersion = useMemo(() => getAppVersionInfo(), []);
+
+  /**
+   * Opens an external web link. Only http(s) is allowed, so a bad constant can
+   * never be turned into an arbitrary deep link.
+   */
+  const handleOpenLink = async (url: string, label: string) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+        throw new Error(`Refusing to open a non-web URL for the ${label}.`);
+      }
+      await Linking.openURL(parsed.toString());
+    } catch (error) {
+      logError('SettingsScreen.openLink', error);
+      Alert.alert(
+        'Unable to Open Link',
+        `Could not open the ${label}. Check your internet connection and try again.`
+      );
+    }
+  };
 
   // Default Item Rules state (Names & Points)
   const [defaultBookName, setDefaultBookName] = useState('Book');
@@ -69,13 +95,43 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
       paper_name: paName,
       paper_points: paPts,
     });
-    if (Platform.OS !== 'web') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+    try {
+      const service = await getQuizService();
+      const allRounds = await service.rounds.getAllRounds();
+      let updatedCount = 0;
+      for (const r of allRounds) {
+        if (r.status !== 'LOCKED') {
+          await service.groups.updateRoundItemRules(r.id, {
+            book_name: bName,
+            book_points: bPts,
+            pen_name: pName,
+            pen_points: pPts,
+            paper_name: paName,
+            paper_points: paPts,
+          });
+          updatedCount++;
+        }
+      }
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setStatusMessage({
+        type: 'success',
+        text:
+          updatedCount > 0
+            ? `Item rules saved! Applied to ${updatedCount} active round${updatedCount > 1 ? 's' : ''}: ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts).`
+            : `Item rules saved! ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts).`,
+      });
+    } catch (_err) {
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setStatusMessage({
+        type: 'success',
+        text: `Item rules saved! ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts).`,
+      });
     }
-    setStatusMessage({
-      type: 'success',
-      text: `Default item rules saved! ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts).`,
-    });
   };
 
   // Raw JSON modal state
@@ -109,7 +165,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
       }
       setStatusMessage({
         type: 'error',
-        text: err.message || 'Failed to delete all data.',
+        text: getErrorMessage(err, 'Failed to delete all data.', 'SettingsScreen'),
       });
     } finally {
       setLoading(false);
@@ -137,10 +193,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
         });
       }
     } catch (err: any) {
-      console.error('Export error:', err);
+      logError('Export error:', err);
       setStatusMessage({
         type: 'error',
-        text: err.message || 'Failed to export backup.',
+        text: getErrorMessage(err, 'Failed to export backup.', 'SettingsScreen'),
       });
     } finally {
       setLoading(false);
@@ -173,10 +229,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
         });
       }
     } catch (err: any) {
-      console.error('Excel backup error:', err);
+      logError('Excel backup error:', err);
       setStatusMessage({
         type: 'error',
-        text: err.message || 'Failed to export Excel backup.',
+        text: getErrorMessage(err, 'Failed to export Excel backup.', 'SettingsScreen'),
       });
     } finally {
       setLoading(false);
@@ -224,10 +280,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
         prepareImport(content);
       }
     } catch (err: any) {
-      console.error('File pick error:', err);
+      logError('File pick error:', err);
       setStatusMessage({
         type: 'error',
-        text: 'Failed to read selected file: ' + (err.message || 'Unknown error'),
+        text: getErrorMessage(err, 'Failed to read the selected file.', 'SettingsScreen'),
       });
     }
   };
@@ -270,7 +326,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
     } catch (err: any) {
       setStatusMessage({
         type: 'error',
-        text: err.message || 'Restore failed.',
+        text: getErrorMessage(err, 'Restore failed.', 'SettingsScreen'),
       });
     } finally {
       setLoading(false);
@@ -371,30 +427,90 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
         <View style={styles.card}>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Application Name</Text>
-            <Text style={styles.infoValue}>{APP_CONFIG.appName}</Text>
+            <Text style={styles.infoValue}>{APP_IDENTITY.name}</Text>
           </View>
           <View style={styles.infoDivider} />
 
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Version</Text>
-            <Text style={styles.infoValue}>{APP_CONFIG.version}</Text>
+            <Text style={styles.infoValue}>{formatAppVersion()}</Text>
+          </View>
+          <View style={styles.infoDivider} />
+
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Application ID</Text>
+            <Text style={styles.infoValue}>{appVersion.applicationId}</Text>
           </View>
           <View style={styles.infoDivider} />
 
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Developer</Text>
             <Text style={[styles.infoValue, { color: COLORS.primary }]}>
-              {APP_CONFIG.developer}
+              {APP_IDENTITY.developer}
             </Text>
           </View>
+          <View style={styles.infoDivider} />
+
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Source Code</Text>
+            <TouchableOpacity
+              style={styles.infoLink}
+              onPress={() => handleOpenLink(APP_IDENTITY.repositoryUrl, 'repository')}
+              accessibilityRole="link"
+            >
+              <Text style={styles.infoLinkText} numberOfLines={1}>
+                {APP_IDENTITY.repositoryUrl.replace('https://github.com/', 'github.com/')}
+              </Text>
+              <Ionicons name="open-outline" size={14} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.infoDivider} />
+
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Privacy Policy</Text>
+            <TouchableOpacity
+              style={styles.infoLink}
+              onPress={() => handleOpenLink(APP_IDENTITY.privacyPolicyUrl, 'privacy policy')}
+              accessibilityRole="link"
+            >
+              <Text style={styles.infoLinkText}>View policy</Text>
+              <Ionicons name="open-outline" size={14} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
+          <View style={styles.infoDivider} />
+
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>License</Text>
+            <Text style={styles.infoValue}>{APP_IDENTITY.license}</Text>
+          </View>
+          <View style={styles.infoDivider} />
+
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Data</Text>
+            <Text style={styles.infoValue}>Stored offline on this device</Text>
+          </View>
+
+          {onReplayIntro && (
+            <>
+              <View style={styles.infoDivider} />
+              <TouchableOpacity
+                style={[styles.textLinkButton, { marginTop: 10, alignSelf: 'center' }]}
+                onPress={onReplayIntro}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="sparkles" size={15} color={COLORS.primary} style={{ marginRight: 6 }} />
+                <Text style={styles.textLinkButtonText}>Play App Intro Animation</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
 
         {/* ITEM BONUS RULES SECTION */}
-        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>ITEM BONUS RULES (DEFAULT NAMES & POINTS)</Text>
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>ITEM BONUS RULES (NAMES & POINTS)</Text>
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Default Item Names & Carry Points</Text>
+          <Text style={styles.cardTitle}>Item Names & Points Per Item</Text>
           <Text style={styles.cardDescription}>
-            Customize the default item names (e.g. Book/Bible, Pen, Paper/Notebook) and point values used when creating new rounds.
+            Item names and points per item are managed exclusively here in Settings. Changes save globally and automatically apply to active rounds and new rounds.
           </Text>
 
           <View style={styles.rulesStack}>
@@ -403,7 +519,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
               <Text style={styles.ruleCardLabel}>📖 Item 1 (Default: Book)</Text>
               <View style={styles.ruleInputGroup}>
                 <View style={{ flex: 1.6, marginRight: 8 }}>
-                  <Text style={styles.ruleMiniLabel}>Item Name</Text>
+                  <Text style={styles.ruleMiniLabel}>Name</Text>
                   <TextInput
                     style={styles.ruleNameInput}
                     value={defaultBookName}
@@ -431,7 +547,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
               <Text style={styles.ruleCardLabel}>🖊️ Item 2 (Default: Pen)</Text>
               <View style={styles.ruleInputGroup}>
                 <View style={{ flex: 1.6, marginRight: 8 }}>
-                  <Text style={styles.ruleMiniLabel}>Item Name</Text>
+                  <Text style={styles.ruleMiniLabel}>Name</Text>
                   <TextInput
                     style={styles.ruleNameInput}
                     value={defaultPenName}
@@ -459,7 +575,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
               <Text style={styles.ruleCardLabel}>📄 Item 3 (Default: Paper)</Text>
               <View style={styles.ruleInputGroup}>
                 <View style={{ flex: 1.6, marginRight: 8 }}>
-                  <Text style={styles.ruleMiniLabel}>Item Name</Text>
+                  <Text style={styles.ruleMiniLabel}>Name</Text>
                   <TextInput
                     style={styles.ruleNameInput}
                     value={defaultPaperName}
@@ -488,7 +604,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
             onPress={handleSaveItemRules}
           >
             <Ionicons name="save-outline" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
-            <Text style={styles.primaryButtonText}>Save Default Item Rules</Text>
+            <Text style={styles.primaryButtonText}>Save Item Rules</Text>
           </TouchableOpacity>
         </View>
 
@@ -515,7 +631,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
         <View style={styles.creditBlock}>
           <Ionicons name="code-slash" size={14} color={COLORS.textMuted} style={{ marginRight: 6 }} />
           <Text style={styles.creditText}>
-            {APP_CONFIG.appName} v{APP_CONFIG.version} — developed by {APP_CONFIG.developer}
+            {APP_IDENTITY.name} v{appVersion.version} — {APP_IDENTITY.copyright}
           </Text>
         </View>
       </ScrollView>
@@ -723,6 +839,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.textPrimary,
+  },
+  infoLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    maxWidth: '58%',
+    paddingVertical: 4,
+    paddingHorizontal: 4,
+  },
+  infoLinkText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.primary,
+    flexShrink: 1,
   },
   infoDivider: {
     height: 1,

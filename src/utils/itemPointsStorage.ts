@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ItemPointsConfig, ItemRuleConfig } from '../types';
 import { APP_CONFIG } from '../constants/config';
+import { logWarn } from './logger';
 
 const ITEM_RULES_STORAGE_KEY = 'quiz_item_rules_config';
 
@@ -19,7 +20,7 @@ export async function getDefaultItemRules(): Promise<ItemRuleConfig> {
       };
     }
   } catch (err) {
-    console.warn('Failed to load item rules from storage:', err);
+    logWarn('Failed to load item rules from storage:', err);
   }
   return {
     book_name: APP_CONFIG.defaultItemNames.book,
@@ -35,7 +36,7 @@ export async function saveDefaultItemRules(rules: ItemRuleConfig): Promise<void>
   try {
     await AsyncStorage.setItem(ITEM_RULES_STORAGE_KEY, JSON.stringify(rules));
   } catch (err) {
-    console.warn('Failed to save item rules to storage:', err);
+    logWarn('Failed to save item rules to storage:', err);
   }
 }
 

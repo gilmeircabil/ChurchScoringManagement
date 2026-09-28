@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet, ActivityIndicator, Text, Platform } from 'react-native';
+import { View, StyleSheet, ActivityIndicator, Text, Platform, useWindowDimensions } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { getDatabaseConnection } from './src/database/database';
@@ -10,11 +10,14 @@ import { PlayersScreen } from './src/screens/PlayersScreen';
 import { RoundScreen } from './src/screens/RoundScreen';
 import { ReportsScreen } from './src/screens/ReportsScreen';
 import { HistoryScreen } from './src/screens/HistoryScreen';
+import { WheelScreen } from './src/screens/WheelScreen';
 import { SettingsScreen } from './src/screens/SettingsScreen';
-import { PinLockScreen } from './src/screens/PinLockScreen';
+import { AppIntroScreen } from './src/components/AppIntroScreen';
 import { MainTab } from './src/types';
 import { COLORS } from './src/constants/colors';
 import { APP_CONFIG } from './src/constants/config';
+import { logError } from './src/utils/logger';
+import { getErrorMessage } from './src/utils/errors';
 
 // Remove harsh browser default focus outline rings on web
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -46,13 +49,16 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 }
 
 export default function App() {
+  const { width } = useWindowDimensions();
+  const isTabletOrWide = width >= 768 || Platform.OS === 'web';
+
   const [isDbReady, setIsDbReady] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [showIntro, setShowIntro] = useState(true);
   const [activeTab, setActiveTab] = useState<MainTab>('home');
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [hasActiveRound, setHasActiveRound] = useState(false);
   const [targetRoundId, setTargetRoundId] = useState<string | undefined>(undefined);
-  const [isUnlocked, setIsUnlocked] = useState(false);
 
   const initApp = useCallback(async () => {
     try {
@@ -62,8 +68,8 @@ export default function App() {
       setHasActiveRound(Boolean(current && current.status === 'ACTIVE'));
       setIsDbReady(true);
     } catch (err: any) {
-      console.error('App init failed:', err);
-      setDbError(err.message || 'Failed to initialize local SQLite database.');
+      logError('App init failed:', err);
+      setDbError(getErrorMessage(err, 'Failed to initialize local SQLite database.', 'App'));
     }
   }, []);
 
@@ -93,6 +99,23 @@ export default function App() {
     setIsSettingsOpen(false);
   };
 
+  // 1. Show smooth animated logo intro before homepage
+  if (showIntro) {
+    return (
+      <SafeAreaProvider>
+        <View style={styles.outerContainer}>
+          <AppIntroScreen
+            onFinish={() => {
+              setShowIntro(false);
+            }}
+            isReady={isDbReady}
+          />
+        </View>
+      </SafeAreaProvider>
+    );
+  }
+
+  // 2. Database loading fallback (if intro was dismissed before DB finished)
   if (!isDbReady) {
     return (
       <SafeAreaProvider>
@@ -119,63 +142,69 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <View style={styles.outerContainer}>
-        <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <View style={[styles.outerContainer, isTabletOrWide && styles.outerContainerTablet]}>
+        <SafeAreaView
+          style={[styles.safeArea, isTabletOrWide && styles.safeAreaTablet]}
+          edges={['top', 'left', 'right']}
+        >
           <StatusBar style="dark" />
 
-          {!isUnlocked ? (
-            <PinLockScreen onUnlock={() => setIsUnlocked(true)} />
-          ) : (
-            <>
-              <View style={styles.mainContent}>
-                {isSettingsOpen ? (
-                  <SettingsScreen onBack={() => setIsSettingsOpen(false)} />
-                ) : (
-                  <>
-                    {activeTab === 'home' && (
-                      <HomeScreen
-                        onNavigate={handleTabChange}
-                        onOpenSettings={() => setIsSettingsOpen(true)}
-                      />
-                    )}
-                    {activeTab === 'players' && (
-                      <PlayersScreen
-                        onNavigate={handleTabChange}
-                        onOpenSettings={() => setIsSettingsOpen(true)}
-                      />
-                    )}
-                    {activeTab === 'round' && (
-                      <RoundScreen
-                        onNavigate={handleTabChange}
-                        onOpenSettings={() => setIsSettingsOpen(true)}
-                        targetRoundId={targetRoundId}
-                      />
-                    )}
-                    {activeTab === 'reports' && (
-                      <ReportsScreen
-                        onNavigate={handleTabChange}
-                        onOpenSettings={() => setIsSettingsOpen(true)}
-                      />
-                    )}
-                    {activeTab === 'history' && (
-                      <HistoryScreen
-                        onNavigate={handleTabChange}
-                        onOpenSettings={() => setIsSettingsOpen(true)}
-                        onSelectRoundForScreen={handleOpenRoundWithId}
-                      />
-                    )}
-                  </>
+          <View style={styles.mainContent}>
+            {isSettingsOpen ? (
+              <SettingsScreen
+                onBack={() => setIsSettingsOpen(false)}
+                onReplayIntro={() => setShowIntro(true)}
+              />
+            ) : (
+              <>
+                {activeTab === 'home' && (
+                  <HomeScreen
+                    onNavigate={handleTabChange}
+                    onOpenSettings={() => setIsSettingsOpen(true)}
+                  />
                 )}
-              </View>
+                {activeTab === 'players' && (
+                  <PlayersScreen
+                    onNavigate={handleTabChange}
+                    onOpenSettings={() => setIsSettingsOpen(true)}
+                  />
+                )}
+                {activeTab === 'round' && (
+                  <RoundScreen
+                    onNavigate={handleTabChange}
+                    onOpenSettings={() => setIsSettingsOpen(true)}
+                    targetRoundId={targetRoundId}
+                  />
+                )}
+                {activeTab === 'reports' && (
+                  <ReportsScreen
+                    onNavigate={handleTabChange}
+                    onOpenSettings={() => setIsSettingsOpen(true)}
+                  />
+                )}
+                {activeTab === 'history' && (
+                  <HistoryScreen
+                    onNavigate={handleTabChange}
+                    onOpenSettings={() => setIsSettingsOpen(true)}
+                    onSelectRoundForScreen={handleOpenRoundWithId}
+                  />
+                )}
+                {activeTab === 'wheel' && (
+                  <WheelScreen
+                    onNavigate={handleTabChange}
+                    onOpenSettings={() => setIsSettingsOpen(true)}
+                  />
+                )}
+              </>
+            )}
+          </View>
 
-              {!isSettingsOpen && (
-                <TabBar
-                  activeTab={activeTab}
-                  onTabChange={handleTabChange}
-                  hasActiveRound={hasActiveRound}
-                />
-              )}
-            </>
+          {!isSettingsOpen && (
+            <TabBar
+              activeTab={activeTab}
+              onTabChange={handleTabChange}
+              hasActiveRound={hasActiveRound}
+            />
           )}
         </SafeAreaView>
       </View>
@@ -186,23 +215,24 @@ export default function App() {
 const styles = StyleSheet.create({
   outerContainer: {
     flex: 1,
-    backgroundColor: Platform.OS === 'web' ? '#0F172A' : COLORS.surface,
+    backgroundColor: COLORS.surface,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  outerContainerTablet: {
+    backgroundColor: '#0F172A',
   },
   safeArea: {
     flex: 1,
     width: '100%',
-    maxWidth: Platform.OS === 'web' ? 680 : undefined,
     backgroundColor: COLORS.surface,
-    ...(Platform.OS === 'web'
-      ? {
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.15,
-          shadowRadius: 16,
-        }
-      : {}),
+  },
+  safeAreaTablet: {
+    maxWidth: 720,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 16,
   },
   mainContent: {
     flex: 1,
