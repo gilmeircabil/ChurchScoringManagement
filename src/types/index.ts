@@ -28,12 +28,15 @@ export interface Group {
   book_count?: number;
   pen_count?: number;
   paper_count?: number;
+  bible_count?: number;
   book_points?: number;
   pen_points?: number;
   paper_points?: number;
+  bible_points?: number;
   book_name?: string;
   pen_name?: string;
   paper_name?: string;
+  bible_name?: string;
 }
 
 export interface GroupMember {
@@ -49,6 +52,7 @@ export interface Score {
   round_id: string;
   player_id: string;
   points: number;
+  bonus_points?: number;
   created_at: string;
   updated_at: string;
 }
@@ -67,6 +71,7 @@ export interface PlayerScoreHistoryItem {
   round_status: RoundStatus;
   group_number?: number;
   points: number;
+  bonus_points?: number;
   updated_at: string;
 }
 
@@ -78,6 +83,8 @@ export interface AssignedMember {
   player_name: string;
   player_number: number;
   round_score: number;
+  group_score?: number;
+  bonus_points?: number;
 }
 
 export interface GroupDetail {
@@ -88,12 +95,15 @@ export interface GroupDetail {
   book_count: number;
   pen_count: number;
   paper_count: number;
+  bible_count: number;
   book_points: number;
   pen_points: number;
   paper_points: number;
+  bible_points: number;
   book_name: string;
   pen_name: string;
   paper_name: string;
+  bible_name: string;
   quiz_score: number;
   items_bonus: number;
   total_score: number;
@@ -103,6 +113,7 @@ export interface ItemPointsConfig {
   book: number;
   pen: number;
   paper: number;
+  bible: number;
 }
 
 export interface ItemRuleConfig {
@@ -112,6 +123,8 @@ export interface ItemRuleConfig {
   pen_points: number;
   paper_name: string;
   paper_points: number;
+  bible_name: string;
+  bible_points: number;
 }
 
 export interface GroupReportItem {
@@ -125,12 +138,15 @@ export interface GroupReportItem {
   book_count: number;
   pen_count: number;
   paper_count: number;
+  bible_count: number;
   book_points: number;
   pen_points: number;
   paper_points: number;
+  bible_points: number;
   book_name: string;
   pen_name: string;
   paper_name: string;
+  bible_name: string;
   items_bonus: number;
   total_score: number;
 }
@@ -141,6 +157,8 @@ export interface ReportItem {
   player_name: string;
   player_number: number;
   score: number;
+  group_score?: number;
+  bonus_points?: number;
   rounds_count?: number;
 }
 

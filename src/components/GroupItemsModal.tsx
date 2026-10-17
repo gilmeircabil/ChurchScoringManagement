@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from '../utils/haptics';
 import { COLORS } from '../constants/colors';
 import { logError } from '../utils/logger';
+import { getGroupColor } from '../utils/groupColors';
 
 interface GroupItemsModalProps {
   visible: boolean;
@@ -26,24 +27,30 @@ interface GroupItemsModalProps {
   initialBookCount: number;
   initialPenCount: number;
   initialPaperCount: number;
+  initialBibleCount?: number;
   initialBookPoints: number;
   initialPenPoints: number;
   initialPaperPoints: number;
+  initialBiblePoints?: number;
   initialBookName?: string;
   initialPenName?: string;
   initialPaperName?: string;
+  initialBibleName?: string;
   isLocked?: boolean;
   onSave: (data: {
     name?: string | null;
     book_count: number;
     pen_count: number;
     paper_count: number;
+    bible_count: number;
     book_points: number;
     pen_points: number;
     paper_points: number;
+    bible_points: number;
     book_name: string;
     pen_name: string;
     paper_name: string;
+    bible_name: string;
     applyToAllGroups: boolean;
   }) => Promise<void>;
   onClose: () => void;
@@ -57,12 +64,15 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
   initialBookCount,
   initialPenCount,
   initialPaperCount,
+  initialBibleCount,
   initialBookPoints,
   initialPenPoints,
   initialPaperPoints,
+  initialBiblePoints,
   initialBookName,
   initialPenName,
   initialPaperName,
+  initialBibleName,
   isLocked = false,
   onSave,
   onClose,
@@ -74,6 +84,7 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
   const [bookCount, setBookCount] = useState(String(initialBookCount ?? 0));
   const [penCount, setPenCount] = useState(String(initialPenCount ?? 0));
   const [paperCount, setPaperCount] = useState(String(initialPaperCount ?? 0));
+  const [bibleCount, setBibleCount] = useState(String(initialBibleCount ?? 0));
 
   const [saving, setSaving] = useState(false);
 
@@ -83,6 +94,7 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
       setBookCount(String(initialBookCount ?? 0));
       setPenCount(String(initialPenCount ?? 0));
       setPaperCount(String(initialPaperCount ?? 0));
+      setBibleCount(String(initialBibleCount ?? 0));
       setSaving(false);
     }
   }, [
@@ -91,25 +103,36 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
     initialBookCount,
     initialPenCount,
     initialPaperCount,
+    initialBibleCount,
   ]);
 
   const cleanBookName = initialBookName?.trim() || 'Book';
   const cleanPenName = initialPenName?.trim() || 'Pen';
   const cleanPaperName = initialPaperName?.trim() || 'Paper';
+  const cleanBibleName = initialBibleName?.trim() || 'Bible';
 
   const numBookPts = typeof initialBookPoints === 'number' ? initialBookPoints : 10;
   const numPenPts = typeof initialPenPoints === 'number' ? initialPenPoints : 5;
   const numPaperPts = typeof initialPaperPoints === 'number' ? initialPaperPoints : 5;
+  const numBiblePts = typeof initialBiblePoints === 'number' ? initialBiblePoints : 5;
 
   const numBookCount = Math.max(0, parseInt(bookCount, 10) || 0);
   const numPenCount = Math.max(0, parseInt(penCount, 10) || 0);
   const numPaperCount = Math.max(0, parseInt(paperCount, 10) || 0);
+  const numBibleCount = Math.max(0, parseInt(bibleCount, 10) || 0);
 
   const bookSubtotal = numBookCount * numBookPts;
   const penSubtotal = numPenCount * numPenPts;
   const paperSubtotal = numPaperCount * numPaperPts;
-  const itemsBonusTotal = bookSubtotal + penSubtotal + paperSubtotal;
+  const bibleSubtotal = numBibleCount * numBiblePts;
+  const itemsBonusTotal = bookSubtotal + penSubtotal + paperSubtotal + bibleSubtotal;
   const totalGroupScore = quizScore + itemsBonusTotal;
+
+  const groupColor = getGroupColor(groupNumber, groupName);
+  const defaultColorName = groupColor.name;
+  const displayGroupName = customGroupName.trim() && !/^group\s*\d+$/i.test(customGroupName.trim())
+    ? customGroupName.trim()
+    : defaultColorName;
 
   const handleAdjustCount = (
     setter: React.Dispatch<React.SetStateAction<string>>,
@@ -136,12 +159,15 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
         book_count: numBookCount,
         pen_count: numPenCount,
         paper_count: numPaperCount,
+        bible_count: numBibleCount,
         book_points: numBookPts,
         pen_points: numPenPts,
         paper_points: numPaperPts,
+        bible_points: numBiblePts,
         book_name: cleanBookName,
         pen_name: cleanPenName,
         paper_name: cleanPaperName,
+        bible_name: cleanBibleName,
         applyToAllGroups: false,
       });
       onClose();
@@ -163,15 +189,10 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
           {/* Header */}
           <View style={styles.headerRow}>
             <View style={styles.headerLeft}>
-              <View style={styles.groupBadge}>
-                <Text style={styles.groupBadgeText}>G{groupNumber}</Text>
-              </View>
+              <View style={[styles.groupColorDot, { backgroundColor: groupColor.hex }]} />
               <View style={{ flex: 1 }}>
                 <Text style={styles.title} numberOfLines={1}>
-                  Group {groupNumber}{customGroupName.trim() ? ` — ${customGroupName.trim()}` : ''}
-                </Text>
-                <Text style={styles.subtitle} numberOfLines={1}>
-                  Auto-total {cleanBookName}, {cleanPenName}, and {cleanPaperName} carry points
+                  {displayGroupName}
                 </Text>
               </View>
             </View>
@@ -184,12 +205,12 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
             {/* Optional Group Custom Name */}
             {!isLocked && (
               <View style={styles.groupNameField}>
-                <Text style={styles.drawerFieldLabel}>🏷️ Group Name (Optional)</Text>
+                <Text style={styles.drawerFieldLabel}>Group Name (Optional)</Text>
                 <TextInput
                   style={styles.drawerNameInput}
                   value={customGroupName}
                   onChangeText={setCustomGroupName}
-                  placeholder={`e.g. Team David (Default: Group ${groupNumber})`}
+                  placeholder={`e.g. Team David (Default: ${defaultColorName})`}
                   placeholderTextColor={COLORS.textMuted}
                 />
               </View>
@@ -319,6 +340,47 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
                   <Text style={styles.subtotalUnit}>pts</Text>
                 </View>
               </View>
+
+              {/* ITEM 4 */}
+              <View style={styles.itemCard}>
+                <View style={[styles.itemIconCircle, { backgroundColor: '#D1FAE5' }]}>
+                  <Ionicons name="bookmarks" size={20} color="#059669" />
+                </View>
+                <View style={styles.itemInfo}>
+                  <Text style={styles.itemTitle} numberOfLines={1}>{cleanBibleName} Carry</Text>
+                  <Text style={styles.itemSubtitle}>+{numBiblePts} pts each</Text>
+                </View>
+
+                <View style={styles.counterRow}>
+                  <TouchableOpacity
+                    style={styles.counterBtn}
+                    onPress={() => handleAdjustCount(setBibleCount, numBibleCount, -1)}
+                    disabled={isLocked || numBibleCount <= 0}
+                  >
+                    <Ionicons name="remove" size={16} color={COLORS.textPrimary} />
+                  </TouchableOpacity>
+                  <TextInput
+                    style={styles.counterInput}
+                    value={bibleCount}
+                    onChangeText={setBibleCount}
+                    keyboardType="number-pad"
+                    editable={!isLocked}
+                    selectTextOnFocus
+                  />
+                  <TouchableOpacity
+                    style={styles.counterBtn}
+                    onPress={() => handleAdjustCount(setBibleCount, numBibleCount, 1)}
+                    disabled={isLocked}
+                  >
+                    <Ionicons name="add" size={16} color="#059669" />
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.subtotalBox}>
+                  <Text style={[styles.subtotalText, { color: '#059669' }]}>+{bibleSubtotal}</Text>
+                  <Text style={styles.subtotalUnit}>pts</Text>
+                </View>
+              </View>
             </View>
 
             {/* LIVE AUTO TOTAL SUMMARY CARD */}
@@ -357,7 +419,7 @@ export const GroupItemsModal: React.FC<GroupItemsModalProps> = ({
                 >
                   <Ionicons name="checkmark-circle" size={18} color="#FFFFFF" style={{ marginRight: 6 }} />
                   <Text style={styles.saveBtnText}>
-                    {saving ? 'Saving...' : 'Save & Update Group Score'}
+                    {saving ? 'Saving...' : 'Save Items'}
                   </Text>
                 </LinearGradient>
               </TouchableOpacity>
@@ -406,18 +468,16 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 10,
   },
-  groupBadge: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  groupBadgeText: {
-    color: '#FFFFFF',
-    fontWeight: '800',
-    fontSize: 14,
+  groupColorDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 1,
   },
   title: {
     fontSize: 18,

@@ -21,7 +21,7 @@ export const APP_CONFIG = {
    * Bump this only when appending a migration to `src/database/migrations.ts`,
    * and make both changes together. Never edit an already-shipped migration.
    */
-  databaseVersion: 2,
+  databaseVersion: 4,
 
   defaultGroupCount: 4,
   minGroupCount: 2,
@@ -32,10 +32,12 @@ export const APP_CONFIG = {
     book: 10,
     pen: 5,
     paper: 5,
+    bible: 5,
   },
   defaultItemNames: {
     book: 'Book',
     pen: 'Pen',
     paper: 'Paper',
+    bible: 'Bible',
   },
 } as const;

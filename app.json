@@ -1,15 +1,16 @@
 {
   "expo": {
-    "name": "Offline Quiz Group & Score Manager",
+    "name": "Quiz Manager",
     "slug": "quiz-score-manager",
     "description": "Offline cross-platform app for managing weekly quiz rounds, players, manual group assignments, individual scores, cumulative reports, and round history.",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "quizscore",
     "userInterfaceStyle": "light",
+    "newArchEnabled": false,
     "primaryColor": "#4F46E5",
     "backgroundColor": "#F8FAFC",
-    "platforms": ["android", "ios"],
+    "platforms": ["android", "ios", "web"],
     "ios": {
       "bundleIdentifier": "com.gilmierdev.quizscore",
       "supportsTablet": true,
@@ -18,7 +19,7 @@
     "android": {
       "package": "com.gilmierdev.quizscore",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#090F24",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -45,7 +46,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#F8FAFC",
+          "backgroundColor": "#040711",
           "image": "./assets/splash-icon.png",
           "imageWidth": 180,
           "resizeMode": "contain"

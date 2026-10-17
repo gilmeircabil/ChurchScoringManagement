@@ -2,7 +2,7 @@
 
 Copy for Google Play and the App Store. Both stores require the privacy policy URL to be live before submission.
 
-**Product name:** Offline Quiz Group & Score Manager
+**Product name:** Quiz Manager
 **Application ID:** `com.gilmierdev.quizscore`
 **Category:** Productivity
 **Contains ads:** No
@@ -21,7 +21,7 @@ Run weekly quiz rounds, track group and individual scores, all offline.
 ```
 Run your quiz night without spreadsheets, and without a signal.
 
-Offline Quiz Group & Score Manager keeps every round, group, and score on
+Quiz Manager keeps every round, group, and score on
 your phone. No account, no sign-in, no internet connection required. Open it
 with Airplane Mode on and everything still works.
 

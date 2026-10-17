@@ -1,7 +1,7 @@
 import { IDatabaseConnection } from '../database/types';
 import { Score, PlayerWithStats } from '../types';
 import { UserFacingError } from '../utils/errors';
-import { computeMemberCarry, recomputeGroupQuizScore, upsertScore } from './groupScoring';
+import { computeMemberCarry, recomputeGroupQuizScore, upsertScore, upsertIndividualBonus } from './groupScoring';
 
 export class ScoreRepository {
   private db: IDatabaseConnection;
@@ -39,6 +39,31 @@ export class ScoreRepository {
       roundId,
       playerId
     );
+  }
+
+  /**
+   * Sets or updates an individual player's bonus round points for a specific round.
+   * Only affects the player's personal score and NEVER modifies the group's quiz score.
+   * Can be awarded when the round is ACTIVE or after the round is LOCKED/Finished.
+   */
+  async saveIndividualBonus(roundId: string, playerId: string, bonusPoints: number): Promise<void> {
+    await this.db.withTransactionAsync(async () => {
+      const round = await this.db.getFirstAsync<{ status: string }>(
+        'SELECT status FROM rounds WHERE id = ?',
+        roundId
+      );
+
+      if (!round) {
+        throw new UserFacingError('Round not found.');
+      }
+      if (round.status === 'DRAFT') {
+        throw new UserFacingError(
+          'This round has not started yet. Start the round before recording bonus points.'
+        );
+      }
+
+      await upsertIndividualBonus(this.db, roundId, playerId, bonusPoints);
+    });
   }
 
   /**
@@ -107,11 +132,11 @@ export class ScoreRepository {
 
   /**
    * Computes cumulative total score directly from the scores table.
-   * Scores belong permanently to the individual player.
+   * Scores belong permanently to the individual player, including any bonus round points.
    */
   async getPlayerTotalScore(playerId: string): Promise<number> {
     const row = await this.db.getFirstAsync<{ total: number | null }>(
-      `SELECT (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points), 0)) AS total
+      `SELECT (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points + s.bonus_points), 0)) AS total
        FROM players p
        LEFT JOIN scores s ON s.player_id = p.id
        WHERE p.id = ?
@@ -128,7 +153,7 @@ export class ScoreRepository {
     const row = await this.db.getFirstAsync<any>(
       `SELECT
         p.*,
-        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points), 0)) AS total_score,
+        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points + s.bonus_points), 0)) AS total_score,
         COUNT(s.id) AS rounds_played
        FROM players p
        LEFT JOIN scores s ON s.player_id = p.id

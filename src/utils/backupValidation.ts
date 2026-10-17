@@ -198,11 +198,13 @@ export function validateBackupData(data: unknown): BackupValidationResult {
       'book_count',
       'pen_count',
       'paper_count',
+      'bible_count',
       'book_points',
       'pen_points',
       'paper_points',
+      'bible_points',
     ] as const) {
-      if (!isNonNegativeInteger(group[field] ?? 0)) {
+      if (group[field] !== undefined && !isNonNegativeInteger(group[field] ?? 0)) {
         return fail(`A group record in the backup has an invalid ${field}.`);
       }
     }
@@ -210,6 +212,9 @@ export function validateBackupData(data: unknown): BackupValidationResult {
       if (!isNonEmptyString(group[field])) {
         return fail(`A group record in the backup is missing its ${field}.`);
       }
+    }
+    if (group.bible_name !== undefined && !isNonEmptyString(group.bible_name)) {
+      return fail('A group record in the backup has an invalid bible_name.');
     }
     if (group.name !== null && group.name !== undefined && typeof group.name !== 'string') {
       return fail('A group record in the backup has an invalid name.');
@@ -270,6 +275,9 @@ export function validateBackupData(data: unknown): BackupValidationResult {
     }
     if (!isNonNegativeInteger(score.points)) {
       return fail('A score record in the backup has an invalid point total.');
+    }
+    if (score.bonus_points !== undefined && !isNonNegativeInteger(score.bonus_points)) {
+      return fail('A score record in the backup has an invalid bonus point total.');
     }
     const keyError = scoreKeys.add(
       `${score.round_id}:${score.player_id}`,

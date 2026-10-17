@@ -7,7 +7,7 @@
  */
 export const APP_IDENTITY = {
   /** Full product name, as shown in the app and in the store listings. */
-  name: 'Offline Quiz Group & Score Manager',
+  name: 'Quiz Manager',
   /** Short name used where space is limited (e.g. the Android launcher). */
   shortName: 'Quiz Manager',
   /** Application identifier. Must match `android.package` / `ios.bundleIdentifier`. */

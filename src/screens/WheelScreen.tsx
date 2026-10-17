@@ -33,16 +33,15 @@ interface WheelScreenProps {
 const STUD_COUNT = 20;
 
 const WHEEL_COLORS = [
-  '#4F46E5', // Indigo
-  '#EC4899', // Pink
-  '#F59E0B', // Amber
-  '#10B981', // Emerald
-  '#8B5CF6', // Purple
-  '#06B6D4', // Cyan
-  '#EF4444', // Red
-  '#3B82F6', // Blue
-  '#14B8A6', // Teal
-  '#F97316', // Orange
+  '#DC2626', // Red
+  '#2563EB', // Blue
+  '#16A34A', // Green
+  '#EAB308', // Yellow
+  '#EA580C', // Orange
+  '#9333EA', // Purple
+  '#DB2777', // Pink
+  '#0891B2', // Teal
+  '#78350F', // Brown
 ];
 
 function polarToCartesian(centerX: number, centerY: number, radius: number, angleInDegrees: number) {

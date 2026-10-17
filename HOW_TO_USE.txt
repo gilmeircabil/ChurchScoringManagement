@@ -1,7 +1,7 @@
 ================================================================================
-          OFFLINE QUIZ GROUP & SCORE MANAGER — USER GUIDE
+                      QUIZ MANAGER — USER GUIDE
 ================================================================================
-Application: Offline Quiz Group & Score Manager
+Application: Quiz Manager
 Target: Church youth clubs, weekly quiz fellowships, schools, and competitions
 Connectivity: 100% Offline (No Internet / Wi-Fi required)
 ================================================================================

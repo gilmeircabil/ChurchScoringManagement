@@ -10,6 +10,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Player, PlayerWithStats, PlayerScoreHistoryItem } from '../types';
@@ -25,6 +27,7 @@ import { PlayerIdBadge } from '../components/PlayerIdBadge';
 import { PendingScorePlaceholder } from '../components/PendingScorePlaceholder';
 import { logError } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
+import { getGroupColor } from '../utils/groupColors';
 
 interface PlayerDetailModalProps {
   visible: boolean;
@@ -170,11 +173,13 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
   if (!player) return null;
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-      <View style={styles.overlay}>
+      <KeyboardAvoidingView
+        style={styles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <View style={styles.dialog}>
-          <View style={styles.dragHandle} />
           {/* Header */}
           <View style={styles.headerRow}>
             <View style={styles.titleInfo}>
@@ -189,90 +194,92 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          {/* Edit Name & Score section */}
-          {isEditing ? (
-            <View style={styles.editSection}>
-              <Text style={styles.fieldLabel}>Player Name</Text>
-              <TextInput
-                style={[styles.input, editError ? styles.inputError : null]}
-                value={editedName}
-                onChangeText={(t) => {
-                  setEditedName(t);
-                  if (editError) setEditError(null);
-                }}
-                autoFocus
-                placeholder="Enter player name"
-                placeholderTextColor={COLORS.textMuted}
-              />
-
-              <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Default / Starting Score</Text>
-              <TextInput
-                style={[styles.input, editError ? styles.inputError : null]}
-                value={editedInitialScore}
-                onChangeText={(t) => {
-                  setEditedInitialScore(t);
-                  if (editError) setEditError(null);
-                }}
-                keyboardType="number-pad"
-                placeholder="0"
-                placeholderTextColor={COLORS.textMuted}
-                maxLength={6}
-              />
-              {editError && <Text style={styles.errorText}>{editError}</Text>}
-
-              <View style={styles.editButtonsRow}>
-                <TouchableOpacity
-                  style={styles.cancelEditButton}
-                  onPress={() => {
-                    setIsEditing(false);
-                    setEditedName(player.name);
-                    setEditedInitialScore(String(player.initial_score ?? 0));
-                    setEditError(null);
-                  }}
-                >
-                  <Text style={styles.cancelEditText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.saveEditButton}
-                  onPress={() => handleSaveName(false)}
-                >
-                  <Text style={styles.saveEditText}>Save</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.editNameButton}
-              onPress={() => {
-                setEditedName(stats?.name || player.name);
-                setEditedInitialScore(String(stats?.initial_score ?? player.initial_score ?? 0));
-                setIsEditing(true);
-              }}
-            >
-              <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
-              <Text style={styles.editNameButtonText}>Edit Player</Text>
-            </TouchableOpacity>
-          )}
-
           {loading ? (
             <View style={styles.loaderContainer}>
               <ActivityIndicator size="small" color={COLORS.primary} />
             </View>
           ) : (
-            <ScrollView style={styles.bodyScroll} contentContainerStyle={styles.bodyContent}>
+            <ScrollView
+              style={styles.bodyScroll}
+              contentContainerStyle={styles.bodyContent}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Edit Name & Score section */}
+              {isEditing ? (
+                <View style={styles.editSection}>
+                  <Text style={styles.fieldLabel}>Player Name</Text>
+                  <TextInput
+                    style={[styles.input, editError ? styles.inputError : null]}
+                    value={editedName}
+                    onChangeText={(t) => {
+                      setEditedName(t);
+                      if (editError) setEditError(null);
+                    }}
+                    autoFocus
+                    placeholder="Enter player name"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+
+                  <Text style={[styles.fieldLabel, { marginTop: 10 }]}>Default / Starting Score</Text>
+                  <TextInput
+                    style={[styles.input, editError ? styles.inputError : null]}
+                    value={editedInitialScore}
+                    onChangeText={(t) => {
+                      setEditedInitialScore(t);
+                      if (editError) setEditError(null);
+                    }}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMuted}
+                    maxLength={6}
+                  />
+                  {editError && <Text style={styles.errorText}>{editError}</Text>}
+
+                  <View style={styles.editButtonsRow}>
+                    <TouchableOpacity
+                      style={styles.cancelEditButton}
+                      onPress={() => {
+                        setIsEditing(false);
+                        setEditedName(player.name);
+                        setEditedInitialScore(String(player.initial_score ?? 0));
+                        setEditError(null);
+                      }}
+                    >
+                      <Text style={styles.cancelEditText}>Cancel</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.saveEditButton}
+                      onPress={() => handleSaveName(false)}
+                    >
+                      <Text style={styles.saveEditText}>Save</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.editNameButton}
+                  onPress={() => {
+                    setEditedName(stats?.name || player.name);
+                    setEditedInitialScore(String(stats?.initial_score ?? player.initial_score ?? 0));
+                    setIsEditing(true);
+                  }}
+                >
+                  <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.editNameButtonText}>Edit Player</Text>
+                </TouchableOpacity>
+              )}
+
               {/* Stats Cards */}
               <View style={styles.statsRow}>
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>Total Score</Text>
                   <Text style={styles.statBigValue}>{stats?.total_score ?? 0}</Text>
-                  <Text style={styles.statSubLabel}>Cumulative Points</Text>
                 </View>
 
                 <View style={styles.statCard}>
                   <Text style={styles.statLabel}>Rounds Played</Text>
                   <Text style={styles.statBigValue}>{stats?.rounds_played ?? 0}</Text>
-                  <Text style={styles.statSubLabel}>Completed Sessions</Text>
                 </View>
 
                 {Boolean(stats?.initial_score && stats.initial_score > 0) && (
@@ -281,7 +288,6 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                     <Text style={[styles.statBigValue, { color: COLORS.secondary }]}>
                       {stats?.initial_score}
                     </Text>
-                    <Text style={styles.statSubLabel}>Starting Points</Text>
                   </View>
                 )}
               </View>
@@ -303,25 +309,38 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
                         <Text style={styles.historyDate}>
                           {formatDateDisplay(item.round_date)}
                         </Text>
-                        <Text style={styles.historyGroup}>
-                          {item.group_number ? `Group ${item.group_number}` : 'Unassigned'} •{' '}
-                          {item.round_status}
-                        </Text>
+                        <View style={styles.historyGroupRow}>
+                          {item.group_number ? (
+                            <View
+                              style={[
+                                styles.historyGroupDot,
+                                { backgroundColor: getGroupColor(item.group_number).hex },
+                              ]}
+                            />
+                          ) : null}
+                          <Text style={styles.historyGroup}>
+                            {item.group_number
+                              ? getGroupColor(item.group_number).name
+                              : 'Unassigned'}{' '}
+                            • {item.round_status}
+                          </Text>
+                        </View>
                       </View>
                       <View style={styles.historyRight}>
                         {item.round_status === 'DRAFT' ? (
                           <PendingScorePlaceholder size="md" />
                         ) : (
-                          <>
-                            <TouchableOpacity
-                              style={styles.historyPointsBadge}
-                              onPress={() => handleEditHistoryScore(item)}
-                              activeOpacity={0.7}
-                              accessibilityLabel={`Score +${item.points}. Tap to edit`}
-                            >
-                              <Text style={styles.historyPointsText}>+{item.points}</Text>
-                            </TouchableOpacity>
-                          </>
+                          <TouchableOpacity
+                            style={styles.historyPointsBadge}
+                            onPress={() => handleEditHistoryScore(item)}
+                            activeOpacity={0.7}
+                            accessibilityLabel={`Score +${item.points}. Tap to edit`}
+                          >
+                            <Text style={styles.historyPointsText}>+{item.points}</Text>
+                            {Boolean(item.bonus_points && item.bonus_points > 0) && (
+                              <Text style={styles.historyBonusText}>+{item.bonus_points} bonus</Text>
+                            )}
+                          </TouchableOpacity>
                         )}
                       </View>
                     </View>
@@ -394,7 +413,7 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
             iconName="trash-outline"
           />
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -402,31 +421,26 @@ export const PlayerDetailModal: React.FC<PlayerDetailModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
   },
   dialog: {
+    width: '100%',
+    maxWidth: 460,
     backgroundColor: COLORS.surface,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 24,
-    paddingTop: 12,
-    paddingBottom: 28,
-    maxHeight: '88%',
+    borderRadius: 24,
+    paddingHorizontal: 22,
+    paddingTop: 20,
+    paddingBottom: 22,
+    maxHeight: '85%',
     elevation: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.8)',
-  },
-  dragHandle: {
-    width: 38,
-    height: 4.5,
-    borderRadius: 3,
-    backgroundColor: COLORS.borderDark,
-    alignSelf: 'center',
-    marginBottom: 16,
   },
   headerRow: {
     flexDirection: 'row',
@@ -557,10 +571,6 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     marginVertical: 4,
   },
-  statSubLabel: {
-    fontSize: 10,
-    color: COLORS.textMuted,
-  },
   historySection: {
     marginTop: 8,
   },
@@ -598,10 +608,20 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textPrimary,
   },
+  historyGroupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  historyGroupDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
   historyGroup: {
     fontSize: 12,
     color: COLORS.textSecondary,
-    marginTop: 2,
   },
   historyRight: {
     flexDirection: 'row',
@@ -613,11 +633,18 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 10,
+    alignItems: 'center',
   },
   historyPointsText: {
     fontSize: 14,
     fontWeight: '700',
     color: COLORS.onSecondaryContainer,
+  },
+  historyBonusText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: COLORS.accent,
+    marginTop: 1,
   },
   deleteContainer: {
     marginTop: 20,

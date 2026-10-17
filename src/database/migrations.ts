@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS groups (
     book_name TEXT NOT NULL DEFAULT 'Book',
     pen_name TEXT NOT NULL DEFAULT 'Pen',
     paper_name TEXT NOT NULL DEFAULT 'Paper',
+    bible_count INTEGER NOT NULL DEFAULT 0,
+    bible_points INTEGER NOT NULL DEFAULT 5,
+    bible_name TEXT NOT NULL DEFAULT 'Bible',
     FOREIGN KEY (round_id) REFERENCES rounds(id) ON DELETE CASCADE
 );
 
@@ -56,6 +59,7 @@ CREATE TABLE IF NOT EXISTS scores (
     round_id TEXT NOT NULL,
     player_id TEXT NOT NULL,
     points INTEGER NOT NULL DEFAULT 0,
+    bonus_points INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE(round_id, player_id),
@@ -91,6 +95,10 @@ const REPAIRABLE_COLUMNS: readonly { table: string; column: string; definition: 
   { table: 'groups', column: 'book_name', definition: "TEXT NOT NULL DEFAULT 'Book'" },
   { table: 'groups', column: 'pen_name', definition: "TEXT NOT NULL DEFAULT 'Pen'" },
   { table: 'groups', column: 'paper_name', definition: "TEXT NOT NULL DEFAULT 'Paper'" },
+  { table: 'groups', column: 'bible_count', definition: 'INTEGER NOT NULL DEFAULT 0' },
+  { table: 'groups', column: 'bible_points', definition: 'INTEGER NOT NULL DEFAULT 5' },
+  { table: 'groups', column: 'bible_name', definition: "TEXT NOT NULL DEFAULT 'Bible'" },
+  { table: 'scores', column: 'bonus_points', definition: 'INTEGER NOT NULL DEFAULT 0' },
 ];
 
 type Migration = {
@@ -129,6 +137,20 @@ const MIGRATIONS: readonly Migration[] = [
       await db.execAsync(
         'CREATE UNIQUE INDEX IF NOT EXISTS idx_groups_round_number ON groups(round_id, group_number);'
       );
+    },
+  },
+  {
+    version: 3,
+    description: 'Add Item 4 (Bible) carry bonus columns to groups',
+    up: async (_db) => {
+      // REPAIRABLE_COLUMNS idempotently adds bible_count, bible_points, bible_name
+    },
+  },
+  {
+    version: 4,
+    description: 'Add bonus_points to scores for individual bonus round',
+    up: async (_db) => {
+      // REPAIRABLE_COLUMNS idempotently adds bonus_points
     },
   },
 ];

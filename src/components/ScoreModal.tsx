@@ -16,6 +16,7 @@ import * as Haptics from '../utils/haptics';
 import { COLORS } from '../constants/colors';
 import { PlayerIdBadge } from './PlayerIdBadge';
 import { validateScore } from '../utils/validation';
+import { getGroupColor } from '../utils/groupColors';
 
 interface ScoreModalProps {
   visible: boolean;
@@ -113,12 +114,20 @@ export const ScoreModal: React.FC<ScoreModalProps> = ({
 
           {groupNumber !== undefined ? (
             <View style={styles.playerInfoRow}>
-              <View style={styles.groupModalBadge}>
-                <Text style={styles.groupModalBadgeText}>{groupNumber}</Text>
-              </View>
-              <Text style={styles.playerName} numberOfLines={1}>
-                {groupName ? `GROUP ${groupNumber} — ${groupName}` : `GROUP ${groupNumber}`}
-              </Text>
+              {(() => {
+                const groupColor = getGroupColor(groupNumber, groupName);
+                const displayGroupName = groupName && !/^group\s*\d+$/i.test(groupName.trim())
+                  ? groupName.trim()
+                  : groupColor.name;
+                return (
+                  <>
+                    <View style={[styles.groupColorDot, { backgroundColor: groupColor.hex }]} />
+                    <Text style={styles.playerName} numberOfLines={1}>
+                      {displayGroupName}
+                    </Text>
+                  </>
+                );
+              })()}
             </View>
           ) : playerName ? (
             <View style={styles.playerInfoRow}>
@@ -323,19 +332,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  groupModalBadge: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  groupModalBadgeText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '800',
+  groupColorDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    marginRight: 10,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.9)',
   },
   playerName: {
     fontSize: 17,

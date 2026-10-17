@@ -12,14 +12,16 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getQuizService } from '../services/quizService';
-import { Round, GroupDetail } from '../types';
+import { Round, GroupDetail, AssignedMember } from '../types';
 import { COLORS } from '../constants/colors';
 import { formatDateDisplay, pluralize } from '../utils/formatters';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { ScoreModal } from '../components/ScoreModal';
 import { GroupItemsModal } from '../components/GroupItemsModal';
+import { IndividualBonusModal } from '../components/IndividualBonusModal';
 import { RoundStatusBadge } from '../components/RoundStatusBadge';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
+import { getGroupColor } from '../utils/groupColors';
 import { logError } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
 
@@ -46,6 +48,10 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
   const [showUnlockConfirm, setShowUnlockConfirm] = useState(false);
   const [scoringGroup, setScoringGroup] = useState<GroupDetail | null>(null);
   const [selectedGroupForItems, setSelectedGroupForItems] = useState<GroupDetail | null>(null);
+  const [selectedMemberForBonus, setSelectedMemberForBonus] = useState<{
+    member: AssignedMember;
+    group: GroupDetail;
+  } | null>(null);
 
   const loadDetails = async (roundId: string) => {
     setLoading(true);
@@ -98,12 +104,15 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
     book_count: number;
     pen_count: number;
     paper_count: number;
+    bible_count: number;
     book_points: number;
     pen_points: number;
     paper_points: number;
+    bible_points: number;
     book_name: string;
     pen_name: string;
     paper_name: string;
+    bible_name: string;
     applyToAllGroups: boolean;
   }) => {
     if (!round || !selectedGroupForItems) return;
@@ -114,9 +123,11 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
           book_points: data.book_points,
           pen_points: data.pen_points,
           paper_points: data.paper_points,
+          bible_points: data.bible_points,
           book_name: data.book_name,
           pen_name: data.pen_name,
           paper_name: data.paper_name,
+          bible_name: data.bible_name,
         });
       }
       await service.groups.updateGroupItems(selectedGroupForItems.id, {
@@ -124,17 +135,36 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
         book_count: data.book_count,
         pen_count: data.pen_count,
         paper_count: data.paper_count,
+        bible_count: data.bible_count,
         book_points: data.book_points,
         pen_points: data.pen_points,
         paper_points: data.paper_points,
+        bible_points: data.bible_points,
         book_name: data.book_name,
         pen_name: data.pen_name,
         paper_name: data.paper_name,
+        bible_name: data.bible_name,
       });
       setSelectedGroupForItems(null);
       loadDetails(round.id);
     } catch (err: any) {
       Alert.alert('Error', getErrorMessage(err, 'Unable to update group items.', 'RoundDetailModal'));
+    }
+  };
+
+  const handleSaveIndividualBonus = async (bonusPoints: number) => {
+    if (!round || !selectedMemberForBonus) return;
+    try {
+      const service = await getQuizService();
+      await service.scores.saveIndividualBonus(
+        round.id,
+        selectedMemberForBonus.member.player_id,
+        bonusPoints
+      );
+      setSelectedMemberForBonus(null);
+      loadDetails(round.id);
+    } catch (err: any) {
+      Alert.alert('Error', getErrorMessage(err, 'Unable to save individual bonus.', 'RoundDetailModal'));
     }
   };
 
@@ -169,41 +199,82 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
             </View>
           ) : (
             <ScrollView style={styles.bodyScroll} contentContainerStyle={styles.bodyContent}>
-              {groupDetails.map((group) => (
-                <View key={group.id} style={styles.groupCard}>
-                  <View style={styles.groupHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.groupTitle} numberOfLines={1}>
-                        GROUP {group.group_number}{group.name ? ` — ${group.name}` : ''}
-                      </Text>
-                      <Text style={styles.groupCount}>
-                        {group.members.length} {pluralize(group.members.length, 'player')}
-                      </Text>
+              {groupDetails.map((group) => {
+                const groupColor = getGroupColor(group.group_number, group.name);
+                return (
+                  <View key={group.id} style={[styles.groupCard, { borderLeftColor: groupColor.hex, borderLeftWidth: 4 }]}>
+                    <View
+                      style={[
+                        styles.groupHeader,
+                        {
+                          backgroundColor: groupColor.lightHex,
+                          borderColor: groupColor.borderHex,
+                        },
+                      ]}
+                    >
+                      <View style={styles.groupHeaderLeft}>
+                        <View style={[styles.groupColorDot, { backgroundColor: groupColor.hex }]} />
+                        <Text
+                          style={[styles.groupTitle, { color: groupColor.textHex }]}
+                          numberOfLines={1}
+                        >
+                          {group.name && !/^group\s*\d+$/i.test(group.name.trim()) ? group.name : groupColor.name}
+                        </Text>
+                        <Text style={[styles.groupHeaderDivider, { color: groupColor.textHex }]}>•</Text>
+                        <Text style={[styles.groupCount, { color: groupColor.textHex, opacity: 0.8 }]}>
+                          {group.members.length} {pluralize(group.members.length, 'player')}
+                        </Text>
+                      </View>
+
+                      {round.status !== 'DRAFT' && (
+                        <View style={[styles.groupTotalBadge, { backgroundColor: groupColor.hex }]}>
+                          <Text style={[styles.groupTotalBadgeLabel, { color: '#FFFFFF' }]}>TOTAL</Text>
+                          <Text style={[styles.groupTotalBadgeValue, { color: '#FFFFFF' }]}>{group.total_score}</Text>
+                          <Text style={[styles.groupTotalBadgePts, { color: '#FFFFFF' }]}>pts</Text>
+                        </View>
+                      )}
                     </View>
 
-                    {round.status !== 'DRAFT' && (
-                      <View style={styles.groupTotalBadge}>
-                        <Text style={styles.groupTotalBadgeLabel}>TOTAL</Text>
-                        <Text style={styles.groupTotalBadgeValue}>{group.total_score}</Text>
-                        <Text style={styles.groupTotalBadgePts}>pts</Text>
-                      </View>
-                    )}
-                  </View>
+                    {group.members.length === 0 ? (
+                      <Text style={styles.emptyGroup}>No players in this group</Text>
+                    ) : (
+                      group.members.map((member) => (
+                        <View key={member.group_member_id} style={styles.memberRow}>
+                          <View style={styles.memberInfo}>
+                            <Text style={styles.memberName} numberOfLines={1}>
+                              {member.player_name}
+                            </Text>
+                            <PlayerIdBadge playerNumber={member.player_number} />
+                          </View>
 
-                  {group.members.length === 0 ? (
-                    <Text style={styles.emptyGroup}>No players in this group</Text>
-                  ) : (
-                    group.members.map((member) => (
-                      <View key={member.group_member_id} style={styles.memberRow}>
-                        <View style={styles.memberInfo}>
-                          <Text style={styles.memberName} numberOfLines={1}>
-                            {member.player_name}
-                          </Text>
-                          <PlayerIdBadge playerNumber={member.player_number} />
+                          {round.status !== 'DRAFT' && (
+                            <TouchableOpacity
+                              style={[
+                                styles.memberBonusButton,
+                                (member.bonus_points ?? 0) > 0 && styles.memberBonusButtonActive,
+                              ]}
+                              onPress={() => setSelectedMemberForBonus({ member, group })}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons
+                                name="star"
+                                size={11}
+                                color={(member.bonus_points ?? 0) > 0 ? '#B45309' : COLORS.textMuted}
+                                style={{ marginRight: 3 }}
+                              />
+                              <Text
+                                style={[
+                                  styles.memberBonusText,
+                                  (member.bonus_points ?? 0) > 0 && styles.memberBonusTextActive,
+                                ]}
+                              >
+                                {(member.bonus_points ?? 0) > 0 ? `+${member.bonus_points}` : 'Bonus'}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
                         </View>
-                      </View>
-                    ))
-                  )}
+                      ))
+                    )}
 
                   {/* Group Items Bonus Footer */}
                   {round.status !== 'DRAFT' && (
@@ -261,14 +332,15 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
 
                         {group.items_bonus > 0 && (
                           <Text style={styles.groupDetailItemsSummary}>
-                            📖 {group.book_count} {group.book_name || 'Book'} • 🖊️ {group.pen_count} {group.pen_name || 'Pen'} • 📄 {group.paper_count} {group.paper_name || 'Paper'}
+                            📖 {group.book_count} {group.book_name || 'Book'} • 🖊️ {group.pen_count} {group.pen_name || 'Pen'} • 📄 {group.paper_count} {group.paper_name || 'Paper'} • ✝️ {group.bible_count} {group.bible_name || 'Bible'}
                           </Text>
                         )}
                       </View>
                     </View>
                   )}
                 </View>
-              ))}
+              );
+            })}
             </ScrollView>
           )}
 
@@ -333,15 +405,33 @@ export const RoundDetailModal: React.FC<RoundDetailModalProps> = ({
               initialBookCount={selectedGroupForItems.book_count}
               initialPenCount={selectedGroupForItems.pen_count}
               initialPaperCount={selectedGroupForItems.paper_count}
+              initialBibleCount={selectedGroupForItems.bible_count}
               initialBookPoints={selectedGroupForItems.book_points}
               initialPenPoints={selectedGroupForItems.pen_points}
               initialPaperPoints={selectedGroupForItems.paper_points}
+              initialBiblePoints={selectedGroupForItems.bible_points}
               initialBookName={selectedGroupForItems.book_name}
               initialPenName={selectedGroupForItems.pen_name}
               initialPaperName={selectedGroupForItems.paper_name}
+              initialBibleName={selectedGroupForItems.bible_name}
               isLocked={round.status === 'LOCKED'}
               onSave={handleSaveGroupItems}
               onClose={() => setSelectedGroupForItems(null)}
+            />
+          )}
+
+          {/* Individual Bonus Modal */}
+          {selectedMemberForBonus && (
+            <IndividualBonusModal
+              visible={Boolean(selectedMemberForBonus)}
+              playerName={selectedMemberForBonus.member.player_name}
+              playerNumber={selectedMemberForBonus.member.player_number}
+              groupName={selectedMemberForBonus.group.name}
+              groupNumber={selectedMemberForBonus.group.group_number}
+              groupCarryScore={selectedMemberForBonus.group.total_score}
+              initialBonus={selectedMemberForBonus.member.bonus_points ?? 0}
+              onSave={handleSaveIndividualBonus}
+              onClose={() => setSelectedMemberForBonus(null)}
             />
           )}
         </View>
@@ -426,22 +516,41 @@ const styles = StyleSheet.create({
   },
   groupHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
-    paddingBottom: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  groupHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 6,
+    marginRight: 6,
+  },
+  groupColorDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
   },
   groupTitle: {
     fontSize: 13,
     fontWeight: '700',
     color: COLORS.primary,
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
+    flexShrink: 1,
+  },
+  groupHeaderDivider: {
+    fontSize: 12,
+    opacity: 0.4,
+    marginHorizontal: 1,
   },
   groupCount: {
     fontSize: 12,
     color: COLORS.textSecondary,
+    flexShrink: 0,
   },
   groupTotalBadge: {
     flexDirection: 'row',
@@ -557,6 +666,28 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginRight: 6,
   },
+  memberBonusButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 3,
+    paddingHorizontal: 7,
+    borderRadius: 6,
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+  },
+  memberBonusButtonActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  memberBonusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+  },
+  memberBonusTextActive: {
+    color: '#B45309',
+  },
   scoreActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -603,5 +734,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  memberScoreBadge: {
+    backgroundColor: COLORS.surfaceVariant,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  memberScoreText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
   },
 });

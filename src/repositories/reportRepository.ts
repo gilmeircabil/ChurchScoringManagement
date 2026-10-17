@@ -24,7 +24,7 @@ export class ReportRepository {
         p.id AS player_id,
         p.name AS player_name,
         p.player_number,
-        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points), 0)) AS total_score,
+        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points + s.bonus_points), 0)) AS total_score,
         COUNT(s.id) AS rounds_count
        FROM players p
        LEFT JOIN scores s ON s.player_id = p.id
@@ -54,13 +54,17 @@ export class ReportRepository {
       player_id: string;
       player_name: string;
       player_number: number;
+      group_score: number;
+      bonus_points: number;
       round_score: number;
     }>(
       `SELECT
         p.id AS player_id,
         p.name AS player_name,
         p.player_number,
-        COALESCE(s.points, 0) AS round_score
+        COALESCE(s.points, 0) AS group_score,
+        COALESCE(s.bonus_points, 0) AS bonus_points,
+        (COALESCE(s.points, 0) + COALESCE(s.bonus_points, 0)) AS round_score
        FROM group_members gm
        JOIN players p ON gm.player_id = p.id
        LEFT JOIN scores s ON s.round_id = gm.round_id AND s.player_id = p.id
@@ -75,6 +79,8 @@ export class ReportRepository {
       player_name: r.player_name,
       player_number: r.player_number,
       score: r.round_score,
+      group_score: r.group_score,
+      bonus_points: r.bonus_points,
     }));
 
     return assignCompetitionRanks(mapped);
@@ -117,16 +123,19 @@ export class ReportRepository {
       const book_count = g.book_count ?? 0;
       const pen_count = g.pen_count ?? 0;
       const paper_count = g.paper_count ?? 0;
+      const bible_count = g.bible_count ?? 0;
       const book_points = g.book_points ?? 10;
       const pen_points = g.pen_points ?? 5;
       const paper_points = g.paper_points ?? 5;
+      const bible_points = g.bible_points ?? 5;
       const items_bonus =
-        book_count * book_points + pen_count * pen_points + paper_count * paper_points;
+        book_count * book_points + pen_count * pen_points + paper_count * paper_points + bible_count * bible_points;
       const total_score = quiz_score + items_bonus;
 
       const book_name = g.book_name || 'Book';
       const pen_name = g.pen_name || 'Pen';
       const paper_name = g.paper_name || 'Paper';
+      const bible_name = g.bible_name || 'Bible';
 
       return {
         rank: 0,
@@ -139,12 +148,15 @@ export class ReportRepository {
         book_count,
         pen_count,
         paper_count,
+        bible_count,
         book_points,
         pen_points,
         paper_points,
+        bible_points,
         book_name,
         pen_name,
         paper_name,
+        bible_name,
         items_bonus,
         total_score,
         score: total_score,

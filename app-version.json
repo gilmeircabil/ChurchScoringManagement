@@ -1,6 +1,6 @@
 {
   "$comment": "SINGLE SOURCE OF TRUTH for release versioning. Never hard-code a version anywhere else. Bump with: npm run version:set -- <major|minor|patch> (see scripts/set-version.mjs).",
-  "version": "1.0.0",
-  "androidVersionCode": 1,
-  "iosBuildNumber": "1"
+  "version": "1.1.0",
+  "androidVersionCode": 2,
+  "iosBuildNumber": "2"
 }

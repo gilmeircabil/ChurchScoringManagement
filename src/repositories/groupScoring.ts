@@ -30,9 +30,11 @@ type GroupScoringColumns = Pick<
   | 'book_count'
   | 'pen_count'
   | 'paper_count'
+  | 'bible_count'
   | 'book_points'
   | 'pen_points'
   | 'paper_points'
+  | 'bible_points'
 >;
 
 export function computeItemsBonus(group: GroupScoringColumns | null | undefined): number {
@@ -40,7 +42,8 @@ export function computeItemsBonus(group: GroupScoringColumns | null | undefined)
   const book = (group.book_count ?? 0) * (group.book_points ?? 0);
   const pen = (group.pen_count ?? 0) * (group.pen_points ?? 0);
   const paper = (group.paper_count ?? 0) * (group.paper_points ?? 0);
-  return book + pen + paper;
+  const bible = (group.bible_count ?? 0) * (group.bible_points ?? 0);
+  return book + pen + paper + bible;
 }
 
 /** Total a member of this group carries for the round: quiz score plus items bonus. */
@@ -54,7 +57,7 @@ export function computeMemberCarry(group: GroupScoringColumns | null | undefined
  *
  * Uses a single `ON CONFLICT` statement so a concurrent save cannot observe a
  * stale read and lose an update, which the previous read-then-write sequence
- * allowed.
+ * allowed. Preserves any existing individual bonus_points.
  */
 export async function upsertScore(
   db: IDatabaseConnection,
@@ -64,8 +67,8 @@ export async function upsertScore(
   now: string = new Date().toISOString()
 ): Promise<void> {
   await db.runAsync(
-    `INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)
+    `INSERT INTO scores (id, round_id, player_id, points, bonus_points, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 0, ?, ?)
      ON CONFLICT(round_id, player_id) DO UPDATE SET
        points = excluded.points,
        updated_at = excluded.updated_at`,
@@ -73,6 +76,33 @@ export async function upsertScore(
     roundId,
     playerId,
     points,
+    now,
+    now
+  );
+}
+
+/**
+ * Updates an individual player's bonus round points for a round.
+ * Does NOT alter the group's quiz score or any other member's score.
+ */
+export async function upsertIndividualBonus(
+  db: IDatabaseConnection,
+  roundId: string,
+  playerId: string,
+  bonusPoints: number,
+  now: string = new Date().toISOString()
+): Promise<void> {
+  const safeBonus = Math.max(0, bonusPoints || 0);
+  await db.runAsync(
+    `INSERT INTO scores (id, round_id, player_id, points, bonus_points, created_at, updated_at)
+     VALUES (?, ?, ?, 0, ?, ?, ?)
+     ON CONFLICT(round_id, player_id) DO UPDATE SET
+       bonus_points = excluded.bonus_points,
+       updated_at = excluded.updated_at`,
+    generateId(),
+    roundId,
+    playerId,
+    safeBonus,
     now,
     now
   );
@@ -92,8 +122,8 @@ export async function ensureScoreRow(
   now: string = new Date().toISOString()
 ): Promise<void> {
   await db.runAsync(
-    `INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at)
-     VALUES (?, ?, ?, 0, ?, ?)
+    `INSERT INTO scores (id, round_id, player_id, points, bonus_points, created_at, updated_at)
+     VALUES (?, ?, ?, 0, 0, ?, ?)
      ON CONFLICT(round_id, player_id) DO NOTHING`,
     generateId(),
     roundId,
@@ -124,7 +154,7 @@ export async function recomputeGroupQuizScore(
   );
 
   const group = await db.getFirstAsync<GroupScoringColumns>(
-    `SELECT quiz_score, book_count, pen_count, paper_count, book_points, pen_points, paper_points
+    `SELECT quiz_score, book_count, pen_count, paper_count, bible_count, book_points, pen_points, paper_points, bible_points
      FROM groups WHERE id = ?`,
     groupId
   );
@@ -148,7 +178,7 @@ export async function syncMemberScoresToGroupCarry(
   groupId: string
 ): Promise<void> {
   const group = await db.getFirstAsync<GroupScoringColumns>(
-    `SELECT quiz_score, book_count, pen_count, paper_count, book_points, pen_points, paper_points
+    `SELECT quiz_score, book_count, pen_count, paper_count, bible_count, book_points, pen_points, paper_points, bible_points
      FROM groups WHERE id = ?`,
     groupId
   );

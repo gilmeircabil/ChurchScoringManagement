@@ -2,6 +2,7 @@ import { IDatabaseConnection } from '../database/types';
 import { Round, RoundStatus, RoundHistoryItem, ItemPointsConfig, ItemRuleConfig } from '../types';
 import { generateId } from '../utils/idGenerator';
 import { UserFacingError } from '../utils/errors';
+import { GROUP_COLORS } from '../utils/groupColors';
 
 export class RoundRepository {
   private db: IDatabaseConnection;
@@ -20,9 +21,11 @@ export class RoundRepository {
     const bookName = defaultRules?.book_name || 'Book';
     const penName = defaultRules?.pen_name || 'Pen';
     const paperName = defaultRules?.paper_name || 'Paper';
+    const bibleName = defaultRules?.bible_name || 'Bible';
     const bookPts = defaultRules?.book_points ?? (defaultRules as any)?.book ?? 10;
     const penPts = defaultRules?.pen_points ?? (defaultRules as any)?.pen ?? 5;
     const paperPts = defaultRules?.paper_points ?? (defaultRules as any)?.paper ?? 5;
+    const biblePts = defaultRules?.bible_points ?? (defaultRules as any)?.bible ?? 5;
 
     return await this.db.withTransactionAsync(async () => {
       await this.db.runAsync(
@@ -37,17 +40,21 @@ export class RoundRepository {
 
       for (let i = 1; i <= groupCount; i++) {
         const groupId = generateId();
+        const defaultColor = GROUP_COLORS[(i - 1) % GROUP_COLORS.length];
         await this.db.runAsync(
-          'INSERT INTO groups (id, round_id, group_number, book_count, pen_count, paper_count, book_points, pen_points, paper_points, book_name, pen_name, paper_name) VALUES (?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO groups (id, round_id, group_number, name, book_count, pen_count, paper_count, bible_count, book_points, pen_points, paper_points, bible_points, book_name, pen_name, paper_name, bible_name) VALUES (?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?)',
           groupId,
           roundId,
           i,
+          defaultColor.name,
           bookPts,
           penPts,
           paperPts,
+          biblePts,
           bookName,
           penName,
-          paperName
+          paperName,
+          bibleName
         );
       }
 
@@ -67,22 +74,11 @@ export class RoundRepository {
   }
 
   /**
-   * Returns current active round if one exists, otherwise most recent draft round, or null.
+   * Returns current active round if one exists, otherwise null.
+   * Only rounds actively in progress are treated as the current working round.
    */
   async getCurrentWorkingRound(): Promise<Round | null> {
-    // Check for ACTIVE first
-    const active = await this.db.getFirstAsync<Round>(
-      "SELECT * FROM rounds WHERE status = 'ACTIVE' ORDER BY round_date DESC, created_at DESC LIMIT 1"
-    );
-    if (active) return active;
-
-    // Check for DRAFT next
-    const draft = await this.db.getFirstAsync<Round>(
-      "SELECT * FROM rounds WHERE status = 'DRAFT' ORDER BY round_date DESC, created_at DESC LIMIT 1"
-    );
-    if (draft) return draft;
-
-    return null;
+    return await this.getActiveRound();
   }
 
   async getAllRounds(): Promise<Round[]> {
@@ -122,6 +118,19 @@ export class RoundRepository {
     return await this.db.getFirstAsync<Round>(
       "SELECT * FROM rounds WHERE status = 'ACTIVE' ORDER BY round_date DESC, created_at DESC LIMIT 1"
     );
+  }
+
+  /**
+   * Permanently deletes a single round and all its groups, group members, and scores.
+   * Players and their starting scores are preserved.
+   */
+  async deleteRound(id: string): Promise<void> {
+    return await this.db.withTransactionAsync(async () => {
+      await this.db.runAsync('DELETE FROM scores WHERE round_id = ?', id);
+      await this.db.runAsync('DELETE FROM group_members WHERE round_id = ?', id);
+      await this.db.runAsync('DELETE FROM groups WHERE round_id = ?', id);
+      await this.db.runAsync('DELETE FROM rounds WHERE id = ?', id);
+    });
   }
 
   /**

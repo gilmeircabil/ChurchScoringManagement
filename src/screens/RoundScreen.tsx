@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,20 +13,22 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as Haptics from '../utils/haptics';
 import { Header } from '../components/Header';
 import { EmptyState } from '../components/EmptyState';
 import { ScoreModal } from '../components/ScoreModal';
 import { GroupItemsModal } from '../components/GroupItemsModal';
+import { EditGroupModal } from '../components/EditGroupModal';
 import { AssignGroupModal } from '../components/AssignGroupModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
-import { UnassignedListModal } from '../components/UnassignedListModal';
+import { AssignMembersModal } from '../components/AssignMembersModal';
+import { IndividualBonusModal } from '../components/IndividualBonusModal';
 import { RoundStatusBadge } from '../components/RoundStatusBadge';
 import { PlayerIdBadge } from '../components/PlayerIdBadge';
 import { getQuizService } from '../services/quizService';
-import { Round, Group, GroupDetail, Player, MainTab } from '../types';
+import { Round, Group, GroupDetail, Player, MainTab, AssignedMember } from '../types';
+import { getGroupColor } from '../utils/groupColors';
 import { COLORS } from '../constants/colors';
 import { APP_CONFIG } from '../constants/config';
 import { formatDateDisplay, getTodayISODate, pluralize } from '../utils/formatters';
@@ -34,6 +36,13 @@ import { validateGroupCount } from '../utils/validation';
 import { getDefaultItemRules } from '../utils/itemPointsStorage';
 import { logError } from '../utils/logger';
 import { getErrorMessage } from '../utils/errors';
+
+const getDisplayGroupName = (name: string | null | undefined, defaultName: string): string => {
+  if (!name || /^group\s*\d+$/i.test(name.trim())) {
+    return defaultName;
+  }
+  return name.trim();
+};
 
 interface RoundScreenProps {
   onNavigate: (tab: MainTab) => void;
@@ -69,13 +78,33 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     groupNumber: number;
   } | null>(null);
 
-  const [isUnassignedModalVisible, setIsUnassignedModalVisible] = useState(false);
+  // Assign Members Modal (Choose members first, then choose group)
+  const [isAssignModalVisible, setIsAssignModalVisible] = useState(false);
+  const [targetGroupForAssign, setTargetGroupForAssign] = useState<{ id: string; group_number: number; name?: string | null } | null>(null);
 
   // Group Scoring Modal
   const [scoringGroup, setScoringGroup] = useState<GroupDetail | null>(null);
 
+  // Edit Group Name Modal
+  const [editingGroup, setEditingGroup] = useState<GroupDetail | null>(null);
+
   // Group Items Carry Bonus Modal
   const [selectedGroupForItems, setSelectedGroupForItems] = useState<GroupDetail | null>(null);
+
+  // Individual Bonus Modal
+  const [selectedMemberForBonus, setSelectedMemberForBonus] = useState<{
+    member: AssignedMember;
+    group: GroupDetail;
+  } | null>(null);
+
+  // Group member counts lookup
+  const groupMemberCounts = useMemo(() => {
+    const countsMap: Record<string, number> = {};
+    for (const gd of groupDetails) {
+      countsMap[gd.id] = gd.members.length;
+    }
+    return countsMap;
+  }, [groupDetails]);
 
   // Confirmations
   const [isStartWarningVisible, setIsStartWarningVisible] = useState(false);
@@ -192,18 +221,48 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     }
   };
 
-  // Save Group Items Bonus (Book, Pen, Paper) & Custom Rules/Names
+  // Batch assign selected players to group (choosing members first, then group)
+  const handleAssignPlayersToGroup = async (playerIds: string[], groupId: string) => {
+    if (!round) return;
+    try {
+      const service = await getQuizService();
+      for (const pId of playerIds) {
+        await service.groups.assignPlayerToGroup(round.id, groupId, pId);
+      }
+      loadRoundData(round.id);
+    } catch (err: any) {
+      Alert.alert('Error', getErrorMessage(err, 'Failed to assign players.', 'RoundScreen'));
+    }
+  };
+
+  // Save Group Name & Color
+  const handleSaveGroupName = async (newName: string | null) => {
+    if (!round || !editingGroup) return;
+    try {
+      const service = await getQuizService();
+      await service.groups.updateGroupName(editingGroup.id, newName);
+      setEditingGroup(null);
+      loadRoundData(round.id);
+    } catch (err: any) {
+      Alert.alert('Error', getErrorMessage(err, 'Unable to update group name.', 'RoundScreen'));
+    }
+  };
+
+  // Save Group Items Bonus (Book, Pen, Paper, Bible) & Custom Rules/Names
   const handleSaveGroupItems = async (data: {
     name?: string | null;
     book_count: number;
     pen_count: number;
     paper_count: number;
+    bible_count: number;
     book_points: number;
     pen_points: number;
     paper_points: number;
+    bible_points: number;
     book_name: string;
     pen_name: string;
     paper_name: string;
+    bible_name: string;
     applyToAllGroups: boolean;
   }) => {
     if (!round || !selectedGroupForItems) return;
@@ -214,9 +273,11 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
           book_points: data.book_points,
           pen_points: data.pen_points,
           paper_points: data.paper_points,
+          bible_points: data.bible_points,
           book_name: data.book_name,
           pen_name: data.pen_name,
           paper_name: data.paper_name,
+          bible_name: data.bible_name,
         });
       }
       await service.groups.updateGroupItems(selectedGroupForItems.id, {
@@ -224,12 +285,15 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
         book_count: data.book_count,
         pen_count: data.pen_count,
         paper_count: data.paper_count,
+        bible_count: data.bible_count,
         book_points: data.book_points,
         pen_points: data.pen_points,
         paper_points: data.paper_points,
+        bible_points: data.bible_points,
         book_name: data.book_name,
         pen_name: data.pen_name,
         paper_name: data.paper_name,
+        bible_name: data.bible_name,
       });
       setSelectedGroupForItems(null);
       loadRoundData(round.id);
@@ -312,40 +376,27 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     }
   };
 
-  // Quick Stepper for group quiz score (+5, -5)
-  const handleQuickStepGroupScore = async (group: GroupDetail, delta: number) => {
-    if (!round || round.status !== 'ACTIVE') return;
-    const currentScore = group.quiz_score || 0;
-    const newScore = Math.max(0, currentScore + delta);
-    if (newScore === currentScore && delta < 0) return;
-
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
-
-    // Optimistically update groupDetails state for instant UI feedback
-    setGroupDetails((prev) =>
-      prev.map((g) =>
-        g.id === group.id
-          ? {
-              ...g,
-              quiz_score: newScore,
-              total_score: newScore + g.items_bonus,
-              members: g.members.map((m) => ({ ...m, round_score: newScore + g.items_bonus })),
-            }
-          : g
-      )
-    );
-
+  // Save Individual Bonus Round Points
+  const handleSaveIndividualBonus = async (bonusPoints: number) => {
+    if (!round || !selectedMemberForBonus) return;
     try {
       const service = await getQuizService();
-      await service.scores.saveGroupScore(round.id, group.id, newScore);
+      await service.scores.saveIndividualBonus(
+        round.id,
+        selectedMemberForBonus.member.player_id,
+        bonusPoints
+      );
+      if (Platform.OS !== 'web') {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+      setSelectedMemberForBonus(null);
       loadRoundData(round.id);
     } catch (err: any) {
-      loadRoundData(round.id);
-      Alert.alert('Error', getErrorMessage(err, 'Unable to update group score.', 'RoundScreen'));
+      Alert.alert('Error', getErrorMessage(err, 'Unable to save individual bonus.', 'RoundScreen'));
     }
   };
+
+
 
   if (loading) {
     return (
@@ -410,40 +461,34 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
               placeholderTextColor={COLORS.textMuted}
             />
 
-            <Text style={styles.fieldLabel}>Number of Groups</Text>
-            <View style={styles.groupCountRow}>
-              {Array.from(
-                { length: 5 },
-                (_, i) => APP_CONFIG.minGroupCount + i
-              ).map((num) => (
-                <TouchableOpacity
-                  key={num}
-                  style={[
-                    styles.countPill,
-                    newGroupCount === String(num) && styles.countPillSelected,
-                  ]}
-                  onPress={() => setNewGroupCount(String(num))}
-                >
-                  <Text
-                    style={[
-                      styles.countPillText,
-                      newGroupCount === String(num) && styles.countPillTextSelected,
-                    ]}
-                  >
-                    {num}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.groupCountHeaderRow}>
+              <Text style={styles.fieldLabel}>Number of Groups</Text>
+              <Text style={styles.groupCountHint}>Selected: {newGroupCount}</Text>
             </View>
-
-            <TextInput
-              style={[styles.input, { marginTop: 8 }]}
-              value={newGroupCount}
-              onChangeText={setNewGroupCount}
-              keyboardType="number-pad"
-              placeholder="Custom group count"
-              placeholderTextColor={COLORS.textMuted}
-            />
+            <View style={styles.groupCountGrid}>
+              {[2, 3, 4, 5, 6, 7, 8, 9].map((num) => {
+                const isSelected = newGroupCount === String(num);
+                return (
+                  <TouchableOpacity
+                    key={num}
+                    style={[
+                      styles.countPill,
+                      isSelected && styles.countPillSelected,
+                    ]}
+                    onPress={() => setNewGroupCount(String(num))}
+                  >
+                    <Text
+                      style={[
+                        styles.countPillText,
+                        isSelected && styles.countPillTextSelected,
+                      ]}
+                    >
+                      {num}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
 
             {newRoundError && <Text style={styles.errorText}>{newRoundError}</Text>}
 
@@ -472,7 +517,7 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
     <View style={styles.container}>
       <Header
         title={formatDateDisplay(round.round_date)}
-        subtitle={`Status: ${round.status} • ${round.group_count} Groups`}
+        subtitle={`${round.group_count} Groups`}
         onSettingsPress={onOpenSettings}
       />
 
@@ -500,88 +545,133 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
         {/* UNASSIGNED PLAYERS SUMMARY (IN DRAFT OR ACTIVE) */}
         {(isDraft || isActive) && (
           <View style={styles.assignmentSummaryBar}>
-            <View>
+            <View style={styles.summaryInfo}>
               <Text style={styles.summaryTitle}>
-                {counts.totalPlayers} Total Players
-              </Text>
-              <Text style={styles.summarySub}>
-                Assigned: <Text style={{ fontWeight: '700', color: COLORS.success }}>{counts.assignedCount}</Text>
-                {'  '}•{'  '}
-                Unassigned: <Text style={{ fontWeight: '700', color: counts.unassignedCount > 0 ? COLORS.warning : COLORS.textSecondary }}>{counts.unassignedCount}</Text>
+                {counts.assignedCount} of {counts.totalPlayers} Players Assigned
               </Text>
             </View>
 
-            {counts.unassignedCount > 0 && (
+            {!isLocked && (
               <TouchableOpacity
-                style={styles.viewUnassignedButton}
-                onPress={() => setIsUnassignedModalVisible(true)}
+                style={styles.assignMembersButtonMinimal}
+                onPress={() => {
+                  setTargetGroupForAssign(null);
+                  setIsAssignModalVisible(true);
+                }}
+                activeOpacity={0.7}
               >
-                <Text style={styles.viewUnassignedText}>View Unassigned</Text>
+                <Ionicons
+                  name={counts.unassignedCount > 0 ? 'person-add-outline' : 'people-outline'}
+                  size={14}
+                  color={COLORS.primary}
+                  style={{ marginRight: 5 }}
+                />
+                <Text style={styles.assignMembersTextMinimal}>
+                  {counts.unassignedCount > 0 ? `Assign (${counts.unassignedCount})` : 'Assign'}
+                </Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
-
-
         {/* GROUPS LIST */}
         <View style={styles.groupsContainer}>
-          {groupDetails.map((group) => (
-            <View key={group.id} style={styles.groupCard}>
-              <View style={styles.groupCardHeader}>
-                <View style={styles.groupNumberCircle}>
-                  <Text style={styles.groupNumberText}>{group.group_number}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.groupHeaderTitle} numberOfLines={1}>
-                    GROUP {group.group_number}{group.name ? ` — ${group.name}` : ''}
-                  </Text>
-                  <Text style={styles.groupMemberCount}>
-                    {group.members.length} {pluralize(group.members.length, 'player')}
-                  </Text>
-                </View>
-
-                {/* GROUP TOTAL SCORE BADGE (Active or Locked) */}
-                {(isActive || isLocked) && (
-                  <View style={styles.groupTotalScoreBadge}>
-                    <Text style={styles.groupTotalScoreLabel}>TOTAL</Text>
-                    <Text style={styles.groupTotalScoreValue}>{group.total_score}</Text>
-                    <Text style={styles.groupTotalScorePts}>pts</Text>
-                  </View>
-                )}
-              </View>
-
-              {group.members.length === 0 ? (
-                <View style={styles.emptyGroupMessage}>
-                  <Text style={styles.emptyGroupText}>No players assigned</Text>
-                </View>
-              ) : (
-                <View style={styles.memberList}>
-                  {group.members.map((member) => (
-                    <View key={member.group_member_id} style={styles.memberRow}>
+          {groupDetails.map((group) => {
+            const groupColor = getGroupColor(group.group_number, group.name);
+            const groupDisplayName = getDisplayGroupName(group.name, groupColor.name);
+            return (
+              <View key={group.id} style={[styles.groupCard, { borderLeftColor: groupColor.hex, borderLeftWidth: 3 }]}>
+                <View
+                  style={[
+                    styles.groupCardHeader,
+                    {
+                      backgroundColor: groupColor.lightHex,
+                      borderBottomColor: groupColor.borderHex,
+                    },
+                  ]}
+                >
+                  <View style={styles.groupHeaderLeft}>
+                    <View style={[styles.groupColorDot, { backgroundColor: groupColor.hex }]} />
+                    <Text
+                      style={[styles.groupHeaderTitle, { color: groupColor.textHex }]}
+                      numberOfLines={1}
+                    >
+                      {groupDisplayName}
+                    </Text>
+                    {!isLocked && (
                       <TouchableOpacity
-                        style={styles.memberInfoButton}
-                        disabled={isLocked}
-                        onPress={() =>
-                          handlePlayerTap({
-                            id: member.player_id,
-                            name: member.player_name,
-                            player_number: member.player_number,
-                            active: 1,
-                            created_at: '',
-                            updated_at: '',
-                          })
-                        }
+                        style={styles.editGroupButtonMinimal}
+                        onPress={() => setEditingGroup(group)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityLabel={`Edit ${groupDisplayName}`}
                       >
-                        <Text style={styles.memberName} numberOfLines={1}>
-                          {member.player_name}
-                        </Text>
-                        <PlayerIdBadge playerNumber={member.player_number} />
+                        <Ionicons name="pencil" size={12} color={groupColor.textHex} style={{ opacity: 0.6 }} />
                       </TouchableOpacity>
+                    )}
+                    <Text style={[styles.groupHeaderDivider, { color: groupColor.textHex }]}>•</Text>
+                    <Text style={[styles.groupMemberCount, { color: groupColor.textHex }]}>
+                      {group.members.length} {pluralize(group.members.length, 'player')}
+                    </Text>
+                    {!isLocked && counts.unassignedCount > 0 && (
+                      <TouchableOpacity
+                        style={styles.addGroupMemberBtn}
+                        onPress={() => {
+                          setTargetGroupForAssign(group);
+                          setIsAssignModalVisible(true);
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        accessibilityLabel={`Add player to ${groupDisplayName}`}
+                      >
+                        <Ionicons name="add" size={13} color={groupColor.textHex} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
 
-                      {!isLocked && (
+                  {/* GROUP TOTAL SCORE BADGE (Active or Locked) */}
+                  {(isActive || isLocked) && (
+                    <View
+                      style={[
+                        styles.groupTotalScoreBadgeMinimal,
+                        { borderColor: groupColor.borderHex },
+                      ]}
+                    >
+                      <Text style={[styles.groupTotalScoreTextMinimal, { color: groupColor.textHex }]}>
+                        {group.total_score} pts
+                      </Text>
+                    </View>
+                  )}
+                </View>
+
+                {group.members.length === 0 ? (
+                  <View style={styles.emptyGroupRow}>
+                    <Text style={styles.emptyGroupText}>No players</Text>
+                    {!isLocked && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setTargetGroupForAssign(group);
+                          setIsAssignModalVisible(true);
+                        }}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={[styles.emptyGroupAssignLink, { color: groupColor.hex }]}>
+                          + Assign
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                ) : (
+                  <View style={styles.memberList}>
+                    {group.members.map((member, index) => (
+                      <View
+                        key={member.group_member_id}
+                        style={[
+                          styles.memberRow,
+                          index === group.members.length - 1 && styles.memberRowLast,
+                        ]}
+                      >
                         <TouchableOpacity
-                          style={styles.memberMoveButton}
+                          style={styles.memberInfoButton}
+                          disabled={isLocked}
                           onPress={() =>
                             handlePlayerTap({
                               id: member.player_id,
@@ -592,77 +682,99 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
                               updated_at: '',
                             })
                           }
-                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                          accessibilityLabel={`Move or remove ${member.player_name}`}
                         >
-                          <Ionicons name="swap-horizontal" size={16} color={COLORS.textSecondary} />
+                          <Text style={styles.memberName} numberOfLines={1}>
+                            {member.player_name}
+                          </Text>
+                          <PlayerIdBadge playerNumber={member.player_number} />
                         </TouchableOpacity>
-                      )}
-                    </View>
-                  ))}
-                </View>
-              )}
+
+                        <View style={styles.memberRightActions}>
+                          {(isActive || isLocked) && (
+                            <TouchableOpacity
+                              style={[
+                                styles.memberBonusButton,
+                                (member.bonus_points ?? 0) > 0 && styles.memberBonusButtonActive,
+                              ]}
+                              onPress={() => setSelectedMemberForBonus({ member, group })}
+                              activeOpacity={0.7}
+                              accessibilityLabel={`Individual bonus for ${member.player_name}: +${member.bonus_points ?? 0} points`}
+                            >
+                              <Ionicons
+                                name="star"
+                                size={11}
+                                color={(member.bonus_points ?? 0) > 0 ? '#B45309' : COLORS.textMuted}
+                                style={{ marginRight: 3 }}
+                              />
+                              <Text
+                                style={[
+                                  styles.memberBonusText,
+                                  (member.bonus_points ?? 0) > 0 && styles.memberBonusTextActive,
+                                ]}
+                              >
+                                {(member.bonus_points ?? 0) > 0 ? `+${member.bonus_points}` : 'Bonus'}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+
+                          {!isLocked && (
+                            <TouchableOpacity
+                              style={styles.memberMoveButton}
+                              onPress={() =>
+                                handlePlayerTap({
+                                  id: member.player_id,
+                                  name: member.player_name,
+                                  player_number: member.player_number,
+                                  active: 1,
+                                  created_at: '',
+                                  updated_at: '',
+                                })
+                              }
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              accessibilityLabel={`Move or remove ${member.player_name}`}
+                            >
+                              <Ionicons name="swap-horizontal" size={16} color={COLORS.textSecondary} />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
 
               {/* GROUP SCORE & ITEMS BONUS FOOTER */}
               {(isActive || isLocked) && (
                 <View style={styles.groupScoreFooter}>
                   {isActive ? (
                     <View style={styles.groupScoringRow}>
-                      {/* QUIZ SCORE STEPPER FOR GROUP */}
-                      <View style={styles.groupQuizScoreSection}>
-                        <Text style={styles.groupScoringSectionLabel}>Quiz Score</Text>
-                        <View style={styles.groupScoreActionRow}>
-                          <TouchableOpacity
-                            style={styles.stepperButton}
-                            onPress={() => handleQuickStepGroupScore(group, -5)}
-                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                            accessibilityLabel="Subtract 5 points from group"
-                          >
-                            <Ionicons name="remove" size={14} color={COLORS.textSecondary} />
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.scorePill}
-                            onPress={() => setScoringGroup(group)}
-                            activeOpacity={0.7}
-                            accessibilityLabel={`Group quiz score: ${group.quiz_score ?? 0} points. Tap to edit`}
-                          >
-                            <Text style={styles.scorePillValue}>{group.quiz_score ?? 0}</Text>
-                            <Text style={styles.scorePillLabel}>pts</Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={styles.stepperButton}
-                            onPress={() => handleQuickStepGroupScore(group, 5)}
-                            hitSlop={{ top: 8, bottom: 8, left: 6, right: 6 }}
-                            accessibilityLabel="Add 5 points to group"
-                          >
-                            <Ionicons name="add" size={14} color={COLORS.primary} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
+                      {/* QUIZ SCORE BUTTON FOR GROUP (Click to edit score) */}
+                      <TouchableOpacity
+                        style={styles.quizScoreButtonMinimal}
+                        onPress={() => setScoringGroup(group)}
+                        activeOpacity={0.7}
+                        accessibilityLabel={`Group quiz score: ${group.quiz_score ?? 0} points. Tap to edit`}
+                      >
+                        <Text style={styles.quizScoreLabelMinimal}>Quiz:</Text>
+                        <Text style={styles.quizScoreValueMinimal}>{group.quiz_score ?? 0}</Text>
+                        <Text style={styles.quizScorePtsMinimal}>pts</Text>
+                      </TouchableOpacity>
 
                       {/* ITEMS BONUS BUTTON */}
                       <TouchableOpacity
                         style={[
-                          styles.itemsBonusButton,
-                          group.items_bonus > 0 && styles.itemsBonusButtonActive,
+                          styles.itemsBonusButtonMinimal,
+                          group.items_bonus > 0 && styles.itemsBonusButtonMinimalActive,
                         ]}
                         onPress={() => setSelectedGroupForItems(group)}
                         activeOpacity={0.7}
                       >
-                        <Ionicons
-                          name={group.items_bonus > 0 ? 'checkmark-circle' : 'add-circle-outline'}
-                          size={15}
-                          color={group.items_bonus > 0 ? COLORS.success : COLORS.primary}
-                        />
                         <Text
                           style={[
-                            styles.itemsBonusButtonText,
-                            group.items_bonus > 0 && styles.itemsBonusButtonTextActive,
+                            styles.itemsBonusTextMinimal,
+                            group.items_bonus > 0 && styles.itemsBonusTextMinimalActive,
                           ]}
                         >
-                          {group.items_bonus > 0 ? `Items (+${group.items_bonus} pts)` : '+ Add Items Carry'}
+                          {group.items_bonus > 0 ? `Items: +${group.items_bonus}` : '+ Items'}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -672,14 +784,21 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
                       <Text style={styles.groupBreakdownText}>
                         Quiz: <Text style={{ fontWeight: '700', color: COLORS.textPrimary }}>{group.quiz_score ?? 0} pts</Text>
                         {'  '}•{'  '}
-                        Items Bonus: <Text style={{ fontWeight: '700', color: group.items_bonus > 0 ? COLORS.success : COLORS.textSecondary }}>+{group.items_bonus} pts</Text>
+                        Items: <Text style={{ fontWeight: '700', color: group.items_bonus > 0 ? COLORS.success : COLORS.textSecondary }}>+{group.items_bonus} pts</Text>
                       </Text>
                     </View>
                   )}
 
                   {group.items_bonus > 0 && (
-                    <Text style={styles.groupItemsCarryDetail}>
-                      📖 {group.book_count} {group.book_name || 'Book'}{group.book_count !== 1 ? 's' : ''} ({group.book_count * group.book_points} pts) • 🖊️ {group.pen_count} {group.pen_name || 'Pen'}{group.pen_count !== 1 ? 's' : ''} ({group.pen_count * group.pen_points} pts) • 📄 {group.paper_count} {group.paper_name || 'Paper'}{group.paper_count !== 1 ? 's' : ''} ({group.paper_count * group.paper_points} pts)
+                    <Text style={styles.itemsCarrySummaryMinimal}>
+                      {[
+                        group.book_count > 0 && `${group.book_count} ${group.book_name || 'Book'}${group.book_count > 1 ? 's' : ''}`,
+                        group.pen_count > 0 && `${group.pen_count} ${group.pen_name || 'Pen'}${group.pen_count > 1 ? 's' : ''}`,
+                        group.paper_count > 0 && `${group.paper_count} ${group.paper_name || 'Paper'}${group.paper_count > 1 ? 's' : ''}`,
+                        group.bible_count > 0 && `${group.bible_count} ${group.bible_name || 'Bible'}${group.bible_count > 1 ? 's' : ''}`,
+                      ]
+                        .filter(Boolean)
+                        .join('  •  ')}
                     </Text>
                   )}
 
@@ -698,61 +817,48 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
                 </View>
               )}
             </View>
-          ))}
+          );
+        })}
         </View>
 
         {/* BOTTOM ACTION BUTTONS */}
         <View style={styles.bottomActions}>
           {isDraft && (
             <TouchableOpacity
-              style={styles.gradientButtonWrapper}
+              style={styles.startRoundButtonMinimal}
               onPress={handleStartRound}
               activeOpacity={0.85}
             >
-              <LinearGradient
-                colors={['#059669', '#10B981']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.startRoundButton}
-              >
-                <Ionicons name="play" size={20} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={styles.startRoundButtonText}>Start Round</Text>
-              </LinearGradient>
+              <Ionicons name="play" size={16} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.startRoundButtonTextMinimal}>Start Round</Text>
             </TouchableOpacity>
           )}
 
           {isActive && (
             <TouchableOpacity
-              style={styles.gradientButtonWrapper}
+              style={styles.lockRoundButtonMinimal}
               onPress={() => {
                 if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                 setIsLockConfirmVisible(true);
               }}
               activeOpacity={0.85}
             >
-              <LinearGradient
-                colors={[COLORS.primary, COLORS.primaryLight]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.lockRoundButton}
-              >
-                <Ionicons name="lock-closed" size={18} color="#FFFFFF" style={{ marginRight: 8 }} />
-                <Text style={styles.lockRoundButtonText}>Finish & Lock Round</Text>
-              </LinearGradient>
+              <Ionicons name="lock-closed" size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
+              <Text style={styles.lockRoundButtonTextMinimal}>Finish & Lock Round</Text>
             </TouchableOpacity>
           )}
 
           {isLocked && (
             <TouchableOpacity
-              style={styles.unlockRoundButton}
+              style={styles.unlockRoundButtonMinimal}
               onPress={() => {
                 if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 setIsUnlockConfirmVisible(true);
               }}
               activeOpacity={0.7}
             >
-              <Ionicons name="lock-open-outline" size={18} color={COLORS.primary} style={{ marginRight: 8 }} />
-              <Text style={styles.unlockRoundButtonText}>Unlock Round</Text>
+              <Ionicons name="lock-open-outline" size={15} color={COLORS.primary} style={{ marginRight: 6 }} />
+              <Text style={styles.unlockRoundButtonTextMinimal}>Unlock Round</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -779,15 +885,18 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
         />
       )}
 
-      {/* UNASSIGNED PLAYERS LIST MODAL */}
-      <UnassignedListModal
-        visible={isUnassignedModalVisible}
+      {/* ASSIGN MEMBERS MODAL (CHOOSE MEMBERS FIRST, THEN GROUP) */}
+      <AssignMembersModal
+        visible={isAssignModalVisible}
+        targetGroup={targetGroupForAssign}
         unassignedPlayers={unassignedPlayers}
-        onSelectPlayer={(player) => {
-          setIsUnassignedModalVisible(false);
-          handlePlayerTap(player);
+        groups={groups}
+        groupMemberCounts={groupMemberCounts}
+        onAssignPlayersToGroup={handleAssignPlayersToGroup}
+        onClose={() => {
+          setIsAssignModalVisible(false);
+          setTargetGroupForAssign(null);
         }}
-        onClose={() => setIsUnassignedModalVisible(false)}
       />
 
       {/* GROUP SCORE ENTRY MODAL */}
@@ -796,30 +905,44 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
           visible={Boolean(scoringGroup)}
           title="Enter Group Score"
           groupNumber={scoringGroup.group_number}
-          groupName={scoringGroup.name}
+          groupName={getDisplayGroupName(scoringGroup.name, getGroupColor(scoringGroup.group_number, scoringGroup.name).name)}
           currentScore={scoringGroup.quiz_score ?? 0}
           onSave={handleSaveGroupScore}
           onClose={() => setScoringGroup(null)}
         />
       )}
 
-      {/* GROUP ITEMS BONUS MODAL (BOOK, PEN, PAPER) */}
+      {/* EDIT GROUP NAME & COLOR MODAL */}
+      {editingGroup && (
+        <EditGroupModal
+          visible={Boolean(editingGroup)}
+          groupNumber={editingGroup.group_number}
+          currentName={getDisplayGroupName(editingGroup.name, getGroupColor(editingGroup.group_number, editingGroup.name).name)}
+          onSave={handleSaveGroupName}
+          onClose={() => setEditingGroup(null)}
+        />
+      )}
+
+      {/* GROUP ITEMS BONUS MODAL (BOOK, PEN, PAPER, BIBLE) */}
       {selectedGroupForItems && (
         <GroupItemsModal
           visible={Boolean(selectedGroupForItems)}
           groupNumber={selectedGroupForItems.group_number}
           groupId={selectedGroupForItems.id}
-          groupName={selectedGroupForItems.name}
+          groupName={getDisplayGroupName(selectedGroupForItems.name, getGroupColor(selectedGroupForItems.group_number, selectedGroupForItems.name).name)}
           quizScore={selectedGroupForItems.quiz_score}
           initialBookCount={selectedGroupForItems.book_count}
           initialPenCount={selectedGroupForItems.pen_count}
           initialPaperCount={selectedGroupForItems.paper_count}
+          initialBibleCount={selectedGroupForItems.bible_count}
           initialBookPoints={selectedGroupForItems.book_points}
           initialPenPoints={selectedGroupForItems.pen_points}
           initialPaperPoints={selectedGroupForItems.paper_points}
+          initialBiblePoints={selectedGroupForItems.bible_points}
           initialBookName={selectedGroupForItems.book_name}
           initialPenName={selectedGroupForItems.pen_name}
           initialPaperName={selectedGroupForItems.paper_name}
+          initialBibleName={selectedGroupForItems.bible_name}
           isLocked={isLocked}
           onSave={handleSaveGroupItems}
           onClose={() => setSelectedGroupForItems(null)}
@@ -862,6 +985,21 @@ export const RoundScreen: React.FC<RoundScreenProps> = ({
         onConfirm={handleUnlockRound}
         onCancel={() => setIsUnlockConfirmVisible(false)}
       />
+
+      {/* INDIVIDUAL BONUS ROUND MODAL */}
+      {selectedMemberForBonus && (
+        <IndividualBonusModal
+          visible={Boolean(selectedMemberForBonus)}
+          playerName={selectedMemberForBonus.member.player_name}
+          playerNumber={selectedMemberForBonus.member.player_number}
+          groupName={selectedMemberForBonus.group.name}
+          groupNumber={selectedMemberForBonus.group.group_number}
+          groupCarryScore={selectedMemberForBonus.group.total_score}
+          initialBonus={selectedMemberForBonus.member.bonus_points ?? 0}
+          onSave={handleSaveIndividualBonus}
+          onClose={() => setSelectedMemberForBonus(null)}
+        />
+      )}
     </View>
   );
 };
@@ -919,105 +1057,145 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: COLORS.surface,
-    padding: 14,
-    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
-    marginBottom: 14,
-    elevation: 1,
+    marginBottom: 12,
+  },
+  summaryInfo: {
+    flex: 1,
+    marginRight: 10,
   },
   summaryTitle: {
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
     color: COLORS.textPrimary,
   },
   summarySub: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
+    fontSize: 12,
+    color: COLORS.warning,
     marginTop: 2,
+    fontWeight: '600',
   },
-  viewUnassignedButton: {
-    backgroundColor: COLORS.accentContainer,
+  assignMembersButtonMinimal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surfaceVariant,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
     paddingVertical: 6,
-    paddingHorizontal: 10,
+    paddingHorizontal: 11,
     borderRadius: 8,
   },
-  viewUnassignedText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.onAccentContainer,
+  assignMembersTextMinimal: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.primary,
   },
-
   groupsContainer: {
-    gap: 14,
+    gap: 12,
   },
   groupCard: {
     backgroundColor: COLORS.surface,
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: COLORS.border,
     overflow: 'hidden',
-    elevation: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 2,
   },
   groupCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surfaceVariant,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
   },
-  groupNumberCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: COLORS.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  groupColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     marginRight: 8,
   },
-  groupNumberText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '700',
+  groupHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: 6,
+    marginRight: 6,
   },
   groupHeaderTitle: {
     fontSize: 14,
     fontWeight: '700',
-    color: COLORS.textPrimary,
-    letterSpacing: 0.5,
-    flex: 1,
+    letterSpacing: 0.2,
+    flexShrink: 1,
+  },
+  groupHeaderDivider: {
+    fontSize: 12,
+    opacity: 0.4,
+    marginHorizontal: 1,
   },
   groupMemberCount: {
     fontSize: 12,
-    color: COLORS.textSecondary,
     fontWeight: '500',
+    opacity: 0.8,
+    flexShrink: 0,
   },
-  emptyGroupMessage: {
-    padding: 16,
+  editGroupButtonMinimal: {
+    padding: 3,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+  },
+  addGroupMemberBtn: {
+    padding: 2,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
+    marginLeft: 3,
+  },
+  groupTotalScoreBadgeMinimal: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+    backgroundColor: '#FFFFFF',
+  },
+  groupTotalScoreTextMinimal: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  emptyGroupRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
   },
   emptyGroupText: {
     fontSize: 13,
     color: COLORS.textMuted,
-    fontStyle: 'italic',
+  },
+  emptyGroupAssignLink: {
+    fontSize: 13,
+    fontWeight: '700',
   },
   memberList: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: 4,
   },
   memberRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.surfaceVariant,
+  },
+  memberRowLast: {
+    borderBottomWidth: 0,
   },
   memberInfoButton: {
     flexDirection: 'row',
@@ -1026,18 +1204,53 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   memberName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.textPrimary,
     marginRight: 8,
     flexShrink: 1,
   },
   memberMoveButton: {
-    padding: 6,
+    padding: 5,
     borderRadius: 6,
     backgroundColor: COLORS.surfaceVariant,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  memberRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  memberBonusButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 3,
+    paddingHorizontal: 7,
+    borderRadius: 6,
+    backgroundColor: COLORS.surfaceVariant,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+  },
+  memberBonusButtonActive: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  memberBonusText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: COLORS.textMuted,
+  },
+  memberBonusTextActive: {
+    color: '#B45309',
+  },
+  groupScoreFooter: {
+    backgroundColor: COLORS.surfaceVariant,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    gap: 6,
   },
   groupScoringRow: {
     flexDirection: 'row',
@@ -1046,109 +1259,54 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  groupQuizScoreSection: {
+  quizScoreButtonMinimal: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-  },
-  groupScoringSectionLabel: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.textSecondary,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  groupScoreActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  scoreActionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  stepperButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: COLORS.surfaceVariant,
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.borderDark,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scorePill: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    backgroundColor: 'rgba(79, 70, 229, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(79, 70, 229, 0.2)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    minWidth: 48,
-    justifyContent: 'center',
-  },
-  scorePillValue: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: COLORS.primary,
-  },
-  scorePillLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: COLORS.primaryLight,
-    marginLeft: 2,
-  },
-  lockedScoreBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.secondaryContainer,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-    borderRadius: 10,
-  },
-  lockedScoreText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.onSecondaryContainer,
-  },
-  groupTotalScoreBadge: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    backgroundColor: COLORS.primaryContainer,
     borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    marginLeft: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+    gap: 4,
   },
-  groupTotalScoreLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: COLORS.primary,
-    marginRight: 4,
-    textTransform: 'uppercase',
+  quizScoreLabelMinimal: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
   },
-  groupTotalScoreValue: {
+  quizScoreValueMinimal: {
     fontSize: 14,
     fontWeight: '800',
-    color: COLORS.primary,
+    color: COLORS.textPrimary,
   },
-  groupTotalScorePts: {
-    fontSize: 10,
+  quizScorePtsMinimal: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+  },
+  itemsBonusButtonMinimal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 11,
+  },
+  itemsBonusButtonMinimalActive: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#86EFAC',
+  },
+  itemsBonusTextMinimal: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.textSecondary,
+  },
+  itemsBonusTextMinimalActive: {
+    color: COLORS.success,
     fontWeight: '700',
-    color: COLORS.primaryLight,
-    marginLeft: 2,
-  },
-  groupScoreFooter: {
-    backgroundColor: COLORS.surfaceVariant,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    flexDirection: 'column',
-    gap: 8,
   },
   groupScoreBreakdown: {
     gap: 2,
@@ -1157,35 +1315,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textSecondary,
   },
-  groupItemsCarryDetail: {
+  itemsCarrySummaryMinimal: {
     fontSize: 11,
     color: COLORS.textSecondary,
-    fontWeight: '500',
     marginTop: 2,
-  },
-  itemsBonusButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.primaryLight,
-    borderRadius: 8,
-    paddingVertical: 7,
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  itemsBonusButtonActive: {
-    backgroundColor: '#F0FDF4',
-    borderColor: '#86EFAC',
-  },
-  itemsBonusButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.primary,
-  },
-  itemsBonusButtonTextActive: {
-    color: COLORS.success,
   },
   itemsBonusButtonLocked: {
     flexDirection: 'row',
@@ -1205,53 +1338,47 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   bottomActions: {
-    marginTop: 24,
+    marginTop: 20,
   },
-  gradientButtonWrapper: {
-    borderRadius: 14,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  startRoundButton: {
+  startRoundButtonMinimal: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: COLORS.success,
+    paddingVertical: 12,
+    borderRadius: 10,
   },
-  startRoundButtonText: {
-    fontSize: 16,
+  startRoundButtonTextMinimal: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  lockRoundButton: {
+  lockRoundButtonMinimal: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 14,
-    borderRadius: 14,
+    backgroundColor: COLORS.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
   },
-  lockRoundButtonText: {
-    fontSize: 16,
+  lockRoundButtonTextMinimal: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  unlockRoundButton: {
+  unlockRoundButtonMinimal: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.surface,
-    borderWidth: 1.5,
-    borderColor: COLORS.primary,
-    paddingVertical: 14,
-    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.borderDark,
+    paddingVertical: 12,
+    borderRadius: 10,
   },
-  unlockRoundButtonText: {
+  unlockRoundButtonTextMinimal: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
     color: COLORS.primary,
   },
   modalOverlay: {
@@ -1298,31 +1425,45 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     marginBottom: 12,
   },
-  groupCountRow: {
+  groupCountHeaderRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  groupCountHint: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.primary,
+  },
+  groupCountGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 8,
-    marginBottom: 6,
+    marginBottom: 16,
   },
   countPill: {
-    flex: 1,
-    paddingVertical: 8,
-    borderRadius: 8,
+    width: '22%',
+    paddingVertical: 10,
+    borderRadius: 10,
     borderWidth: 1.5,
     borderColor: COLORS.borderDark,
     backgroundColor: COLORS.surface,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   countPillSelected: {
     borderColor: COLORS.primary,
     backgroundColor: COLORS.primaryContainer,
   },
   countPillText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
     color: COLORS.textSecondary,
   },
   countPillTextSelected: {
     color: COLORS.primary,
+    fontWeight: '800',
   },
   errorText: {
     color: COLORS.danger,
@@ -1358,3 +1499,4 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
 });
+

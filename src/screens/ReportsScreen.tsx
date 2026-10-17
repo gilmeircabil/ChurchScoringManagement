@@ -19,6 +19,7 @@ import { SlideUp } from '../components/AnimatedComponents';
 import { getQuizService } from '../services/quizService';
 import { ReportItem, GroupReportItem, Round, MainTab } from '../types';
 import { COLORS } from '../constants/colors';
+import { getGroupColor } from '../utils/groupColors';
 import { formatDateDisplay, pluralize } from '../utils/formatters';
 import { exportReportToExcel } from '../utils/excelExport';
 import { logError } from '../utils/logger';
@@ -259,35 +260,39 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
             contentContainerStyle={styles.listContent}
             renderItem={({ item, index }) => {
               const isTop3 = item.rank <= 3;
-              return (
-                <SlideUp delay={Math.min(index * 50, 500)}>
-                  <View style={[styles.groupRankCard, isTop3 && styles.rankCardTop]}>
-                    {/* Rank Badge */}
-                    <View
-                      style={[
-                        styles.rankBadge,
-                        item.rank === 1 && styles.rankBadgeFirst,
-                        item.rank === 2 && styles.rankBadgeSecond,
-                        item.rank === 3 && styles.rankBadgeThird,
-                      ]}
-                    >
-                      <Text
+                const groupColor = getGroupColor(item.group_number, item.name);
+                return (
+                  <SlideUp delay={Math.min(index * 50, 500)}>
+                    <View style={[styles.groupRankCard, isTop3 && styles.rankCardTop, { borderLeftColor: groupColor.hex, borderLeftWidth: 4 }]}>
+                      {/* Rank Badge */}
+                      <View
                         style={[
-                          styles.rankText,
-                          item.rank === 1 && styles.rankTextFirst,
-                          item.rank === 2 && styles.rankTextSecond,
-                          item.rank === 3 && styles.rankTextThird,
+                          styles.rankBadge,
+                          item.rank === 1 && styles.rankBadgeFirst,
+                          item.rank === 2 && styles.rankBadgeSecond,
+                          item.rank === 3 && styles.rankBadgeThird,
                         ]}
                       >
-                        {item.rank}
-                      </Text>
-                    </View>
+                        <Text
+                          style={[
+                            styles.rankText,
+                            item.rank === 1 && styles.rankTextFirst,
+                            item.rank === 2 && styles.rankTextSecond,
+                            item.rank === 3 && styles.rankTextThird,
+                          ]}
+                        >
+                          {item.rank}
+                        </Text>
+                      </View>
 
-                    {/* Group Info */}
-                    <View style={styles.groupInfo}>
-                      <Text style={styles.groupName} numberOfLines={1}>
-                        GROUP {item.group_number}{item.name ? ` — ${item.name}` : ''}
-                      </Text>
+                      {/* Group Info */}
+                      <View style={styles.groupInfo}>
+                        <View style={styles.groupNameRow}>
+                          <View style={[styles.groupColorDot, { backgroundColor: groupColor.hex }]} />
+                          <Text style={[styles.groupName, { color: groupColor.textHex }]} numberOfLines={1}>
+                            {item.name ? item.name : groupColor.name}
+                          </Text>
+                        </View>
                       <Text style={styles.groupMembersText} numberOfLines={1}>
                         {item.member_count} {pluralize(item.member_count, 'player')}
                         {item.member_names.length > 0 ? ` (${item.member_names.join(', ')})` : ''}
@@ -307,7 +312,7 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
                       </View>
                       {item.items_bonus > 0 && (
                         <Text style={styles.itemsCarryBreakdownText}>
-                          📖 {item.book_count} {item.book_name || 'Book'} • 🖊️ {item.pen_count} {item.pen_name || 'Pen'} • 📄 {item.paper_count} {item.paper_name || 'Paper'}
+                          📖 {item.book_count} {item.book_name || 'Book'} • 🖊️ {item.pen_count} {item.pen_name || 'Pen'} • 📄 {item.paper_count} {item.paper_name || 'Paper'} • ✝️ {item.bible_count} {item.bible_name || 'Bible'}
                         </Text>
                       )}
                     </View>
@@ -366,10 +371,17 @@ export const ReportsScreen: React.FC<ReportsScreenProps> = ({ onNavigate, onOpen
 
                   {/* Player Info */}
                   <View style={styles.playerInfo}>
-                    <Text style={styles.playerName} numberOfLines={1}>
-                      {item.player_name}
-                    </Text>
-                    <PlayerIdBadge playerNumber={item.player_number} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Text style={styles.playerName} numberOfLines={1}>
+                        {item.player_name}
+                      </Text>
+                      <PlayerIdBadge playerNumber={item.player_number} />
+                    </View>
+                    {filter === 'by_round' && (item.bonus_points ?? 0) > 0 && (
+                      <Text style={styles.playerBonusSubtitle}>
+                        Group: {item.group_score ?? 0} pts • <Text style={{ color: '#D97706', fontWeight: '700' }}>Bonus: +{item.bonus_points} pts</Text>
+                      </Text>
+                    )}
                   </View>
 
                   {/* Score Value */}
@@ -558,17 +570,21 @@ const styles = StyleSheet.create({
     color: '#C2410C',
   },
   playerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
     flex: 1,
     marginRight: 10,
+    justifyContent: 'center',
   },
   playerName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: COLORS.textPrimary,
-    marginRight: 8,
     flexShrink: 1,
+  },
+  playerBonusSubtitle: {
+    fontSize: 11,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+    fontWeight: '500',
   },
   scoreBox: {
     alignItems: 'flex-end',
@@ -599,6 +615,16 @@ const styles = StyleSheet.create({
   groupInfo: {
     flex: 1,
     marginRight: 10,
+  },
+  groupNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  groupColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 6,
   },
   groupName: {
     fontSize: 16,

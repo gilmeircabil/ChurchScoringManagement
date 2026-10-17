@@ -54,7 +54,9 @@ export class GroupRepository {
         p.id AS player_id,
         p.name AS player_name,
         p.player_number,
-        COALESCE(s.points, 0) AS round_score
+        COALESCE(s.points, 0) AS group_score,
+        COALESCE(s.bonus_points, 0) AS bonus_points,
+        (COALESCE(s.points, 0) + COALESCE(s.bonus_points, 0)) AS round_score
        FROM group_members gm
        JOIN groups g ON gm.group_id = g.id
        JOIN players p ON gm.player_id = p.id
@@ -71,22 +73,22 @@ export class GroupRepository {
 
     return groups.map((g) => {
       const members = assignedMembers.filter((m) => m.group_id === g.id);
-      const quiz_score =
-        g.quiz_score !== undefined && g.quiz_score !== null
-          ? g.quiz_score
-          : members.reduce((sum, m) => sum + (m.round_score || 0), 0);
+      const quiz_score = g.quiz_score ?? 0;
       const book_count = g.book_count ?? 0;
       const pen_count = g.pen_count ?? 0;
       const paper_count = g.paper_count ?? 0;
+      const bible_count = g.bible_count ?? 0;
       const book_points = g.book_points ?? 10;
       const pen_points = g.pen_points ?? 5;
       const paper_points = g.paper_points ?? 5;
+      const bible_points = g.bible_points ?? 5;
       const items_bonus = computeItemsBonus(g);
       const total_score = quiz_score + items_bonus;
 
       const book_name = g.book_name || 'Book';
       const pen_name = g.pen_name || 'Pen';
       const paper_name = g.paper_name || 'Paper';
+      const bible_name = g.bible_name || 'Bible';
 
       return {
         id: g.id,
@@ -96,12 +98,15 @@ export class GroupRepository {
         book_count,
         pen_count,
         paper_count,
+        bible_count,
         book_points,
         pen_points,
         paper_points,
+        bible_points,
         book_name,
         pen_name,
         paper_name,
+        bible_name,
         quiz_score,
         items_bonus,
         total_score,
@@ -257,12 +262,15 @@ export class GroupRepository {
       book_count: number;
       pen_count: number;
       paper_count: number;
+      bible_count?: number;
       book_points?: number;
       pen_points?: number;
       paper_points?: number;
+      bible_points?: number;
       book_name?: string;
       pen_name?: string;
       paper_name?: string;
+      bible_name?: string;
     }
   ): Promise<void> {
     const group = await this.db.getFirstAsync<Group>(
@@ -282,6 +290,7 @@ export class GroupRepository {
     const bCount = Math.max(0, data.book_count || 0);
     const pCount = Math.max(0, data.pen_count || 0);
     const paCount = Math.max(0, data.paper_count || 0);
+    const biCount = Math.max(0, data.bible_count || 0);
     const bPts =
       typeof data.book_points === 'number'
         ? Math.max(0, data.book_points)
@@ -294,26 +303,34 @@ export class GroupRepository {
       typeof data.paper_points === 'number'
         ? Math.max(0, data.paper_points)
         : (group.paper_points ?? 5);
+    const biPts =
+      typeof data.bible_points === 'number'
+        ? Math.max(0, data.bible_points)
+        : (group.bible_points ?? 5);
     const bName = (data.book_name && data.book_name.trim()) || group.book_name || 'Book';
     const pName = (data.pen_name && data.pen_name.trim()) || group.pen_name || 'Pen';
     const paName = (data.paper_name && data.paper_name.trim()) || group.paper_name || 'Paper';
+    const biName = (data.bible_name && data.bible_name.trim()) || group.bible_name || 'Bible';
     const groupName = data.name !== undefined ? (data.name?.trim() || null) : (group.name ?? null);
 
     await this.db.withTransactionAsync(async () => {
       await this.db.runAsync(
         `UPDATE groups 
-         SET name = ?, book_count = ?, pen_count = ?, paper_count = ?, book_points = ?, pen_points = ?, paper_points = ?, book_name = ?, pen_name = ?, paper_name = ?
+         SET name = ?, book_count = ?, pen_count = ?, paper_count = ?, bible_count = ?, book_points = ?, pen_points = ?, paper_points = ?, bible_points = ?, book_name = ?, pen_name = ?, paper_name = ?, bible_name = ?
          WHERE id = ?`,
         groupName,
         bCount,
         pCount,
         paCount,
+        biCount,
         bPts,
         pPts,
         paPts,
+        biPts,
         bName,
         pName,
         paName,
+        biName,
         groupId
       );
 
@@ -333,9 +350,11 @@ export class GroupRepository {
       book_points: number;
       pen_points: number;
       paper_points: number;
+      bible_points?: number;
       book_name?: string;
       pen_name?: string;
       paper_name?: string;
+      bible_name?: string;
     }
   ): Promise<void> {
     const round = await this.db.getFirstAsync<{ status: string }>(
@@ -349,19 +368,23 @@ export class GroupRepository {
     const bPts = Math.max(0, rules.book_points);
     const pPts = Math.max(0, rules.pen_points);
     const paPts = Math.max(0, rules.paper_points);
+    const biPts = typeof rules.bible_points === 'number' ? Math.max(0, rules.bible_points) : 5;
     const bName = rules.book_name?.trim() || 'Book';
     const pName = rules.pen_name?.trim() || 'Pen';
     const paName = rules.paper_name?.trim() || 'Paper';
+    const biName = rules.bible_name?.trim() || 'Bible';
 
     await this.db.withTransactionAsync(async () => {
       await this.db.runAsync(
-        'UPDATE groups SET book_points = ?, pen_points = ?, paper_points = ?, book_name = ?, pen_name = ?, paper_name = ? WHERE round_id = ?',
+        'UPDATE groups SET book_points = ?, pen_points = ?, paper_points = ?, bible_points = ?, book_name = ?, pen_name = ?, paper_name = ?, bible_name = ? WHERE round_id = ?',
         bPts,
         pPts,
         paPts,
+        biPts,
         bName,
         pName,
         paName,
+        biName,
         roundId
       );
 
@@ -389,5 +412,13 @@ export class GroupRepository {
     }
   ): Promise<void> {
     await this.updateRoundItemRules(roundId, points);
+  }
+
+  /**
+   * Updates custom group name directly.
+   */
+  async updateGroupName(groupId: string, name: string | null): Promise<void> {
+    const trimmed = name && name.trim().length > 0 ? name.trim() : null;
+    await this.db.runAsync('UPDATE groups SET name = ? WHERE id = ?', trimmed, groupId);
   }
 }

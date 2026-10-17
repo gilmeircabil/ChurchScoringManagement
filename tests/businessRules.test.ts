@@ -11,8 +11,10 @@ import {
   exportPlayersRosterToExcel,
   exportReportToExcel,
   exportDatabaseBackupToExcel,
+  sanitizeSpreadsheetCell,
 } from '../src/utils/excelExport';
 import * as XLSX from 'xlsx';
+import { GROUP_COLORS, PRIMARY_COLORS, SECONDARY_COLORS } from '../src/utils/groupColors';
 
 describe('Quiz Score Manager — Business Rules and Scenarios', () => {
   let service: QuizService;
@@ -820,8 +822,8 @@ describe('Quiz Score Manager — Business Rules and Scenarios', () => {
   // TEST 27 — Export player roster to Excel (.xlsx) workbook
   test('Test 27 — Export player roster to Excel (.xlsx) workbook with correct headers and player stats', async () => {
     // Setup players
-    const p1 = await service.players.createPlayer('Elijah', 25);
-    const p2 = await service.players.createPlayer('Elisha', 15);
+    await service.players.createPlayer('Elijah', 25);
+    await service.players.createPlayer('Elisha', 15);
 
     const playersWithStats = await service.players.searchPlayersWithStats('', true);
     expect(playersWithStats).toHaveLength(2);
@@ -1091,4 +1093,299 @@ describe('Quiz Score Manager — Business Rules and Scenarios', () => {
     expect(details[0].book_points).toBe(10);
     expect(details[0].items_bonus).toBe(30);
   });
+
+  // TEST 35 — Group Color Defaults & Group Name Update
+  test('Test 35 — Groups have default color names and allow updating group name directly', async () => {
+    const round = await service.rounds.createRound('2026-10-16', 5);
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+
+    expect(groups).toHaveLength(5);
+    expect(groups[0].name).toBe('Red');
+    expect(groups[1].name).toBe('Blue');
+    expect(groups[2].name).toBe('Green');
+    expect(groups[3].name).toBe('Yellow');
+    expect(groups[4].name).toBe('Orange');
+
+    // Update group name directly
+    await service.groups.updateGroupName(groups[0].id, 'Red Warriors');
+    const updated = await service.groups.getGroupsByRoundId(round.id);
+    expect(updated[0].name).toBe('Red Warriors');
+  });
+
+  // TEST 36 — Single Round Deletion in History
+  test('Test 36 — Deleting a single round erases its groups, assignments, and scores without touching players', async () => {
+    const p1 = await service.players.createPlayer('Gideon');
+    const r1 = await service.rounds.createRound('2026-10-10', 2);
+    const r2 = await service.rounds.createRound('2026-10-17', 2);
+
+    const groups = await service.groups.getGroupsByRoundId(r1.id);
+    await service.groups.assignPlayerToGroup(r1.id, groups[0].id, p1.id);
+    await service.rounds.updateRoundStatus(r1.id, 'ACTIVE');
+    await service.scores.saveScore(r1.id, p1.id, 20);
+
+    // Delete r1
+    await service.rounds.deleteRound(r1.id);
+
+    const history = await service.rounds.getRoundHistoryList();
+    expect(history.some((h) => h.id === r1.id)).toBe(false);
+    expect(history.some((h) => h.id === r2.id)).toBe(true);
+
+    // Player still survives
+    const p = await service.players.getPlayerById(p1.id);
+    expect(p?.name).toBe('Gideon');
+  });
+
+  // TEST 37 — Individual Player Scoring within Group
+  test('Test 37 — Individual player scores update player totals and group quiz score', async () => {
+    const p1 = await service.players.createPlayer('Alice');
+    const p2 = await service.players.createPlayer('Bob');
+
+    const round = await service.rounds.createRound('2026-10-16', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const g1 = groups[0];
+
+    await service.groups.assignPlayerToGroup(round.id, g1.id, p1.id);
+    await service.groups.assignPlayerToGroup(round.id, g1.id, p2.id);
+
+    // Alice answers a 10-point question
+    await service.scores.saveScore(round.id, p1.id, 10);
+
+    // Bob answers a 15-point question
+    await service.scores.saveScore(round.id, p2.id, 15);
+
+    const members = await service.groups.getAssignedMembers(round.id);
+    const aliceMember = members.find((m) => m.player_id === p1.id);
+    const bobMember = members.find((m) => m.player_id === p2.id);
+
+    expect(aliceMember?.round_score).toBe(10);
+    expect(bobMember?.round_score).toBe(15);
+
+    const details = await service.groups.getGroupDetails(round.id);
+    const g1Detail = details.find((d) => d.id === g1.id);
+
+    // Group quiz score is the sum of members' individual quiz scores
+    expect(g1Detail?.quiz_score).toBe(25);
+    expect(g1Detail?.total_score).toBe(25);
+  });
+
+  // TEST 38 — 9 group colors categorized into Primary and Secondary choices
+  test('Test 38 — Exactly 9 colors available, properly categorized into Primary and Secondary choices', () => {
+    expect(GROUP_COLORS).toHaveLength(9);
+    expect(PRIMARY_COLORS).toHaveLength(3);
+    expect(SECONDARY_COLORS).toHaveLength(6);
+
+    const primaryNames = PRIMARY_COLORS.map((c) => c.name);
+    expect(primaryNames).toEqual(['Red', 'Blue', 'Yellow']);
+
+    const secondaryNames = SECONDARY_COLORS.map((c) => c.name);
+    expect(secondaryNames).toEqual(['Green', 'Orange', 'Purple', 'Pink', 'Teal', 'Brown']);
+
+    // Every color has hex, lightHex, borderHex, textHex, and category
+    for (const c of GROUP_COLORS) {
+      expect(c.hex).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(c.lightHex).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(c.borderHex).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(c.textHex).toMatch(/^#[0-9A-Fa-f]{6}$/);
+      expect(['primary', 'secondary']).toContain(c.category);
+    }
+  });
+
+  // TEST 39 — Item 4 (Bible) carry bonus, editable points, custom names, and round rules propagation
+  test('Test 39 — Item 4 (Bible) defaults, custom points/names, and round propagation calculate bonus properly', async () => {
+    const round = await service.rounds.createRound('2026-10-17', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const g1 = groups[0];
+    const g2 = groups[1];
+
+    // Check defaults: bible_count = 0, bible_points = 5, bible_name = 'Bible'
+    let details = await service.groups.getGroupDetails(round.id);
+    let g1Detail = details.find((d) => d.id === g1.id)!;
+    expect(g1Detail.bible_count).toBe(0);
+    expect(g1Detail.bible_points).toBe(5);
+    expect(g1Detail.bible_name).toBe('Bible');
+
+    // Group 1 carries 2 Bibles (2 * 5 = 10 pts) + 1 Book (10 pts) = 20 pts items bonus
+    await service.groups.updateGroupItems(g1.id, {
+      book_count: 1,
+      pen_count: 0,
+      paper_count: 0,
+      bible_count: 2,
+    });
+
+    details = await service.groups.getGroupDetails(round.id);
+    g1Detail = details.find((d) => d.id === g1.id)!;
+    expect(g1Detail.bible_count).toBe(2);
+    expect(g1Detail.items_bonus).toBe(20);
+
+    // Apply custom rules to all groups in round: Item 4 named "Songbook" with 8 points
+    await service.groups.updateRoundItemRules(round.id, {
+      book_points: 10,
+      pen_points: 5,
+      paper_points: 5,
+      bible_points: 8,
+      book_name: 'Book',
+      pen_name: 'Pen',
+      paper_name: 'Paper',
+      bible_name: 'Songbook',
+    });
+
+    details = await service.groups.getGroupDetails(round.id);
+    for (const g of details) {
+      expect(g.bible_points).toBe(8);
+      expect(g.bible_name).toBe('Songbook');
+    }
+
+    // Now Group 1 with 2 Songbooks (2 * 8 = 16) + 1 Book (10) = 26 items bonus
+    const g1Updated = details.find((d) => d.id === g1.id)!;
+    expect(g1Updated.items_bonus).toBe(26);
+  });
+
+  // TEST 40 — Item 4 (Bible) included in Group Leaderboard report
+  test('Test 40 — Group report includes bible_count, bible_points, and bible_name in totals', async () => {
+    const round = await service.rounds.createRound('2026-10-17', 1);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const g1 = groups[0];
+
+    await service.scores.saveGroupScore(round.id, g1.id, 50);
+    await service.groups.updateGroupItems(g1.id, {
+      book_count: 2,  // 2 * 10 = 20
+      pen_count: 1,   // 1 * 5 = 5
+      paper_count: 3, // 3 * 5 = 15
+      bible_count: 4, // 4 * 5 = 20
+    });
+
+    const report = await service.reports.getGroupReport(round.id);
+    expect(report).toHaveLength(1);
+    expect(report[0].quiz_score).toBe(50);
+    expect(report[0].book_count).toBe(2);
+    expect(report[0].pen_count).toBe(1);
+    expect(report[0].paper_count).toBe(3);
+    expect(report[0].bible_count).toBe(4);
+    // items bonus = 20 + 5 + 15 + 20 = 60
+    expect(report[0].items_bonus).toBe(60);
+    // total score = 50 + 60 = 110
+    expect(report[0].total_score).toBe(110);
+  });
+
+  // TEST 41 — Individual Bonus Round points only add to individual player, NOT group score
+  test('Test 41 — Individual bonus points awarded after round lock only increase player score, never group score', async () => {
+    const round = await service.rounds.createRound('2026-10-18', 2);
+    await service.rounds.updateRoundStatus(round.id, 'ACTIVE');
+
+    const alice = await service.players.createPlayer('Alice');
+    const bob = await service.players.createPlayer('Bob');
+    const charlie = await service.players.createPlayer('Charlie');
+
+    const groups = await service.groups.getGroupsByRoundId(round.id);
+    const g1 = groups[0];
+    const g2 = groups[1];
+
+    await service.groups.assignPlayerToGroup(round.id, g1.id, alice.id);
+    await service.groups.assignPlayerToGroup(round.id, g1.id, bob.id);
+    await service.groups.assignPlayerToGroup(round.id, g2.id, charlie.id);
+
+    // Group 1: 40 quiz score + 10 items carry (1 book) = 50 total score
+    await service.scores.saveGroupScore(round.id, g1.id, 40);
+    await service.groups.updateGroupItems(g1.id, { book_count: 1, pen_count: 0, paper_count: 0, bible_count: 0 });
+
+    // Group 2: 60 quiz score + 0 items = 60 total score
+    await service.scores.saveGroupScore(round.id, g2.id, 60);
+
+    // Round is finished and LOCKED
+    await service.rounds.updateRoundStatus(round.id, 'LOCKED');
+
+    let gDetails = await service.groups.getGroupDetails(round.id);
+    expect(gDetails.find((g) => g.id === g1.id)!.total_score).toBe(50);
+    expect(gDetails.find((g) => g.id === g2.id)!.total_score).toBe(60);
+
+    // POST-ROUND: Individual Bonus Round!
+    // Alice wins 15 bonus points in the individual bonus round
+    await service.scores.saveIndividualBonus(round.id, alice.id, 15);
+
+    // 1. Group 1 total score MUST REMAIN 50 (NEVER changes to 65)
+    gDetails = await service.groups.getGroupDetails(round.id);
+    const g1After = gDetails.find((g) => g.id === g1.id)!;
+    expect(g1After.quiz_score).toBe(40);
+    expect(g1After.items_bonus).toBe(10);
+    expect(g1After.total_score).toBe(50);
+
+    // 2. Bob's score MUST REMAIN 50
+    const members = await service.groups.getAssignedMembers(round.id);
+    const bobMember = members.find((m) => m.player_id === bob.id)!;
+    expect(bobMember.group_score).toBe(50);
+    expect(bobMember.bonus_points).toBe(0);
+    expect(bobMember.round_score).toBe(50);
+
+    // 3. Alice's score is now 65 (50 group baseline + 15 individual bonus)
+    const aliceMember = members.find((m) => m.player_id === alice.id)!;
+    expect(aliceMember.group_score).toBe(50);
+    expect(aliceMember.bonus_points).toBe(15);
+    expect(aliceMember.round_score).toBe(65);
+
+    // 4. By Group Leaderboard: Group 2 remains Rank 1 (60 pts), Group 1 remains Rank 2 (50 pts)
+    const groupReport = await service.reports.getGroupReport(round.id);
+    expect(groupReport[0].group_id).toBe(g2.id);
+    expect(groupReport[0].total_score).toBe(60);
+    expect(groupReport[1].group_id).toBe(g1.id);
+    expect(groupReport[1].total_score).toBe(50);
+
+    // 5. By Player Leaderboard: Alice is Rank 1 (65 pts), Charlie Rank 2 (60 pts), Bob Rank 3 (50 pts)
+    const playerReport = await service.reports.getRoundReport(round.id);
+    expect(playerReport[0].player_id).toBe(alice.id);
+    expect(playerReport[0].score).toBe(65);
+    expect(playerReport[0].bonus_points).toBe(15);
+    expect(playerReport[1].player_id).toBe(charlie.id);
+    expect(playerReport[1].score).toBe(60);
+    expect(playerReport[2].player_id).toBe(bob.id);
+    expect(playerReport[2].score).toBe(50);
+
+    // 6. Overall cumulative report: Alice has 65 all-time total score
+    const overallReport = await service.reports.getOverallReport();
+    const aliceOverall = overallReport.find((p) => p.player_id === alice.id)!;
+    expect(aliceOverall.score).toBe(65);
+  });
+
+  // TEST 39 — Security: Spreadsheet formula injection prevention (CWE-1236)
+  test('Test 39 — Security: sanitizeSpreadsheetCell neutralizes formula injection payloads starting with =, +, -, @, \\t, \\r', async () => {
+    // Normal text is untouched
+    expect(sanitizeSpreadsheetCell('John Doe')).toBe('John Doe');
+    expect(sanitizeSpreadsheetCell('Group 1 — Champions')).toBe('Group 1 — Champions');
+    expect(sanitizeSpreadsheetCell(100)).toBe(100);
+    expect(sanitizeSpreadsheetCell(0)).toBe(0);
+    expect(sanitizeSpreadsheetCell(null)).toBe(null);
+    expect(sanitizeSpreadsheetCell(undefined)).toBe(undefined);
+
+    // Dangerous formula prefixes get prepended with a single quote (')
+    expect(sanitizeSpreadsheetCell('=SUM(A1:A10)')).toBe("'=SUM(A1:A10)");
+    expect(sanitizeSpreadsheetCell("+cmd|' /C calc'!A0")).toBe("'+cmd|' /C calc'!A0");
+    expect(sanitizeSpreadsheetCell('-2+5')).toBe("'-2+5");
+    expect(sanitizeSpreadsheetCell('@HYPERLINK("http://evil.com","Click")')).toBe("'@HYPERLINK(\"http://evil.com\",\"Click\")");
+    expect(sanitizeSpreadsheetCell('\tLeadingTab')).toBe("'\tLeadingTab");
+    expect(sanitizeSpreadsheetCell('\rLeadingCR')).toBe("'\rLeadingCR");
+
+    // Integration check: Workbook rows with malicious player names are safely escaped
+    const p1 = await service.players.createPlayer('=cmd|calc', 0);
+    const p2 = await service.players.createPlayer('+malicious', 0);
+    const p3 = await service.players.createPlayer('Safe Player', 0);
+
+    const playersWithStats = await service.players.searchPlayersWithStats('', true);
+    const wb = buildPlayersWorkbook(playersWithStats);
+    const ws = wb.Sheets['Players Roster'];
+    const sheetData: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+    const p1Row = sheetData.find((row) => row[0] === formatPlayerIdentifier(p1.player_number));
+    const p2Row = sheetData.find((row) => row[0] === formatPlayerIdentifier(p2.player_number));
+    const p3Row = sheetData.find((row) => row[0] === formatPlayerIdentifier(p3.player_number));
+
+    expect(p1Row?.[1]).toBe("'=cmd|calc");
+    expect(p2Row?.[1]).toBe("'+malicious");
+    expect(p3Row?.[1]).toBe("Safe Player");
+  });
 });
+

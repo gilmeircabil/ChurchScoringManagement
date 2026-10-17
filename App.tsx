@@ -153,7 +153,6 @@ export default function App() {
             {isSettingsOpen ? (
               <SettingsScreen
                 onBack={() => setIsSettingsOpen(false)}
-                onReplayIntro={() => setShowIntro(true)}
               />
             ) : (
               <>

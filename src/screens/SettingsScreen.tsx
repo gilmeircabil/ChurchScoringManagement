@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,10 @@ import {
   ScrollView,
   Alert,
   TextInput,
-  Modal,
   Linking,
   Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
 import * as Haptics from '../utils/haptics';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -24,7 +22,7 @@ import { getQuizService } from '../services/quizService';
 import { COLORS } from '../constants/colors';
 import { APP_IDENTITY } from '../constants/appIdentity';
 import { BackupData } from '../types';
-import { formatAppVersion, getAppVersionInfo } from '../utils/appVersion';
+import { formatAppVersion } from '../utils/appVersion';
 import { getDefaultItemRules, saveDefaultItemRules } from '../utils/itemPointsStorage';
 import { exportDatabaseBackupToExcel } from '../utils/excelExport';
 import { logError } from '../utils/logger';
@@ -32,13 +30,11 @@ import { getErrorMessage } from '../utils/errors';
 
 interface SettingsScreenProps {
   onBack: () => void;
-  onReplayIntro?: () => void;
 }
 
-export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplayIntro }) => {
+export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack }) => {
   const [loading, setLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<StatusMessage>(null);
-  const appVersion = useMemo(() => getAppVersionInfo(), []);
 
   /**
    * Opens an external web link. Only http(s) is allowed, so a bad constant can
@@ -67,6 +63,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
   const [defaultPenPts, setDefaultPenPts] = useState('5');
   const [defaultPaperName, setDefaultPaperName] = useState('Paper');
   const [defaultPaperPts, setDefaultPaperPts] = useState('5');
+  const [defaultBibleName, setDefaultBibleName] = useState('Bible');
+  const [defaultBiblePts, setDefaultBiblePts] = useState('5');
 
   React.useEffect(() => {
     getDefaultItemRules().then((rules) => {
@@ -76,6 +74,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
       setDefaultPenPts(String(rules.pen_points));
       setDefaultPaperName(rules.paper_name || 'Paper');
       setDefaultPaperPts(String(rules.paper_points));
+      setDefaultBibleName(rules.bible_name || 'Bible');
+      setDefaultBiblePts(String(rules.bible_points ?? 5));
     });
   }, []);
 
@@ -86,6 +86,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
     const pPts = Math.max(0, parseInt(defaultPenPts, 10) || 0);
     const paName = defaultPaperName.trim() || 'Paper';
     const paPts = Math.max(0, parseInt(defaultPaperPts, 10) || 0);
+    const biName = defaultBibleName.trim() || 'Bible';
+    const biPts = Math.max(0, parseInt(defaultBiblePts, 10) || 0);
 
     await saveDefaultItemRules({
       book_name: bName,
@@ -94,6 +96,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
       pen_points: pPts,
       paper_name: paName,
       paper_points: paPts,
+      bible_name: biName,
+      bible_points: biPts,
     });
 
     try {
@@ -109,6 +113,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
             pen_points: pPts,
             paper_name: paName,
             paper_points: paPts,
+            bible_name: biName,
+            bible_points: biPts,
           });
           updatedCount++;
         }
@@ -120,8 +126,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
         type: 'success',
         text:
           updatedCount > 0
-            ? `Item rules saved! Applied to ${updatedCount} active round${updatedCount > 1 ? 's' : ''}: ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts).`
-            : `Item rules saved! ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts).`,
+            ? `Item rules saved! Applied to ${updatedCount} active round${updatedCount > 1 ? 's' : ''}: ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts), ${biName} (${biPts} pts).`
+            : `Item rules saved! ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts), ${biName} (${biPts} pts).`,
       });
     } catch (_err) {
       if (Platform.OS !== 'web') {
@@ -129,15 +135,10 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
       }
       setStatusMessage({
         type: 'success',
-        text: `Item rules saved! ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts).`,
+        text: `Item rules saved! ${bName} (${bPts} pts), ${pName} (${pPts} pts), ${paName} (${paPts} pts), ${biName} (${biPts} pts).`,
       });
     }
   };
-
-  // Raw JSON modal state
-  const [isRawJsonModalVisible, setIsRawJsonModalVisible] = useState(false);
-  const [rawJsonText, setRawJsonText] = useState('');
-  const [rawJsonMode, setRawJsonMode] = useState<'export' | 'import'>('export');
 
   // Confirmation modal state
   const [pendingBackupData, setPendingBackupData] = useState<BackupData | null>(null);
@@ -239,22 +240,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
     }
   };
 
-  // View raw JSON for copying
-  const handleViewRawJson = async () => {
-    setLoading(true);
-    try {
-      const service = await getQuizService();
-      const data = await service.backup.generateBackupData();
-      setRawJsonText(JSON.stringify(data, null, 2));
-      setRawJsonMode('export');
-      setIsRawJsonModalVisible(true);
-    } catch (_err: any) {
-      Alert.alert('Error', 'Unable to generate JSON preview.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Handle Pick Backup File
   const handlePickBackupFile = async () => {
     setStatusMessage(null);
@@ -304,7 +289,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
         setShowRestoreConfirm(true);
       });
     } catch {
-      Alert.alert('Invalid JSON', 'The selected file or text is not valid JSON.');
+      Alert.alert('Invalid JSON', 'The selected file is not valid JSON.');
     }
   };
 
@@ -317,8 +302,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
       const service = await getQuizService();
       await service.backup.restoreFromData(pendingBackupData);
       setPendingBackupData(null);
-      setIsRawJsonModalVisible(false);
-      setRawJsonText('');
       setStatusMessage({
         type: 'success',
         text: `Restore complete! Successfully imported ${pendingBackupData.players.length} players, ${pendingBackupData.rounds.length} rounds, and ${pendingBackupData.scores.length} scores.`,
@@ -337,7 +320,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
     <View style={styles.container}>
       <Header
         title="Settings & Backup"
-        subtitle="Offline Data Management"
         showSettingsButton={false}
       />
 
@@ -356,9 +338,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
 
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Export Backup</Text>
-          <Text style={styles.cardDescription}>
-            Save a full backup of all players, rounds, manual group assignments, and score records to your device storage or share it.
-          </Text>
 
           <View style={styles.buttonRow}>
             <TouchableOpacity
@@ -379,46 +358,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
               <Text style={styles.secondaryButtonText}>JSON Backup</Text>
             </TouchableOpacity>
           </View>
-
-          <TouchableOpacity
-            style={[styles.textLinkButton, { marginTop: 10, alignSelf: 'center' }]}
-            onPress={handleViewRawJson}
-            disabled={loading}
-          >
-            <Ionicons name="code-slash-outline" size={14} color={COLORS.primary} style={{ marginRight: 4 }} />
-            <Text style={styles.textLinkButtonText}>View Raw JSON</Text>
-          </TouchableOpacity>
         </View>
 
         <View style={[styles.card, { marginTop: 14 }]}>
           <Text style={styles.cardTitle}>Import Backup</Text>
-          <Text style={styles.cardDescription}>
-            Restore your quiz data from a previously exported JSON backup file. All data will be validated before replacing current records.
-          </Text>
 
-          <View style={styles.buttonRow}>
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={handlePickBackupFile}
-              disabled={loading}
-            >
-              <Ionicons name="folder-open-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.secondaryButtonText}>Choose File</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.secondaryButton}
-              onPress={() => {
-                setRawJsonText('');
-                setRawJsonMode('import');
-                setIsRawJsonModalVisible(true);
-              }}
-              disabled={loading}
-            >
-              <Ionicons name="clipboard-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
-              <Text style={styles.secondaryButtonText}>Paste JSON</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={handlePickBackupFile}
+            disabled={loading}
+          >
+            <Ionicons name="folder-open-outline" size={18} color={COLORS.primary} style={{ marginRight: 6 }} />
+            <Text style={styles.secondaryButtonText}>Choose Backup File</Text>
+          </TouchableOpacity>
         </View>
 
         {/* APP INFO SECTION */}
@@ -426,43 +378,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
 
         <View style={styles.card}>
           <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Application Name</Text>
-            <Text style={styles.infoValue}>{APP_IDENTITY.name}</Text>
-          </View>
-          <View style={styles.infoDivider} />
-
-          <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>Version</Text>
             <Text style={styles.infoValue}>{formatAppVersion()}</Text>
-          </View>
-          <View style={styles.infoDivider} />
-
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Application ID</Text>
-            <Text style={styles.infoValue}>{appVersion.applicationId}</Text>
-          </View>
-          <View style={styles.infoDivider} />
-
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Developer</Text>
-            <Text style={[styles.infoValue, { color: COLORS.primary }]}>
-              {APP_IDENTITY.developer}
-            </Text>
-          </View>
-          <View style={styles.infoDivider} />
-
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Source Code</Text>
-            <TouchableOpacity
-              style={styles.infoLink}
-              onPress={() => handleOpenLink(APP_IDENTITY.repositoryUrl, 'repository')}
-              accessibilityRole="link"
-            >
-              <Text style={styles.infoLinkText} numberOfLines={1}>
-                {APP_IDENTITY.repositoryUrl.replace('https://github.com/', 'github.com/')}
-              </Text>
-              <Ionicons name="open-outline" size={14} color={COLORS.primary} />
-            </TouchableOpacity>
           </View>
           <View style={styles.infoDivider} />
 
@@ -477,41 +394,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
               <Ionicons name="open-outline" size={14} color={COLORS.primary} />
             </TouchableOpacity>
           </View>
-          <View style={styles.infoDivider} />
-
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>License</Text>
-            <Text style={styles.infoValue}>{APP_IDENTITY.license}</Text>
-          </View>
-          <View style={styles.infoDivider} />
-
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Data</Text>
-            <Text style={styles.infoValue}>Stored offline on this device</Text>
-          </View>
-
-          {onReplayIntro && (
-            <>
-              <View style={styles.infoDivider} />
-              <TouchableOpacity
-                style={[styles.textLinkButton, { marginTop: 10, alignSelf: 'center' }]}
-                onPress={onReplayIntro}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="sparkles" size={15} color={COLORS.primary} style={{ marginRight: 6 }} />
-                <Text style={styles.textLinkButtonText}>Play App Intro Animation</Text>
-              </TouchableOpacity>
-            </>
-          )}
         </View>
 
         {/* ITEM BONUS RULES SECTION */}
-        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>ITEM BONUS RULES (NAMES & POINTS)</Text>
+        <Text style={[styles.sectionHeader, { marginTop: 24 }]}>ITEM BONUS RULES</Text>
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>Item Names & Points Per Item</Text>
-          <Text style={styles.cardDescription}>
-            Item names and points per item are managed exclusively here in Settings. Changes save globally and automatically apply to active rounds and new rounds.
-          </Text>
+          <Text style={styles.cardTitle}>Item Rules</Text>
 
           <View style={styles.rulesStack}>
             {/* Item 1 */}
@@ -597,6 +485,34 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
                 </View>
               </View>
             </View>
+
+            {/* Item 4 */}
+            <View style={styles.ruleCardSetting}>
+              <Text style={styles.ruleCardLabel}>✝️ Item 4 (Default: Bible)</Text>
+              <View style={styles.ruleInputGroup}>
+                <View style={{ flex: 1.6, marginRight: 8 }}>
+                  <Text style={styles.ruleMiniLabel}>Name</Text>
+                  <TextInput
+                    style={styles.ruleNameInput}
+                    value={defaultBibleName}
+                    onChangeText={setDefaultBibleName}
+                    placeholder="Bible"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.ruleMiniLabel}>Points Each</Text>
+                  <TextInput
+                    style={styles.itemRuleInput}
+                    value={defaultBiblePts}
+                    onChangeText={setDefaultBiblePts}
+                    keyboardType="number-pad"
+                    placeholder="5"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+              </View>
+            </View>
           </View>
 
           <TouchableOpacity
@@ -612,10 +528,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
         <Text style={[styles.sectionHeader, { marginTop: 24, color: COLORS.danger }]}>DANGER ZONE</Text>
 
         <View style={[styles.card, { borderColor: COLORS.dangerContainer }]}>
-          <Text style={[styles.cardTitle, { color: COLORS.danger }]}>Delete All Data</Text>
-          <Text style={styles.cardDescription}>
-            Permanently erase all players, rounds, groups, and score records. This action cannot be undone.
-          </Text>
+          <Text style={[styles.cardTitle, { color: COLORS.danger, marginBottom: 12 }]}>Delete All Data</Text>
 
           <TouchableOpacity
             style={styles.dangerButton}
@@ -625,14 +538,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
             <Ionicons name="trash-outline" size={18} color={COLORS.danger} style={{ marginRight: 6 }} />
             <Text style={styles.dangerButtonText}>Delete All Data</Text>
           </TouchableOpacity>
-        </View>
-
-        {/* DEVELOPER CREDIT */}
-        <View style={styles.creditBlock}>
-          <Ionicons name="code-slash" size={14} color={COLORS.textMuted} style={{ marginRight: 6 }} />
-          <Text style={styles.creditText}>
-            {APP_IDENTITY.name} v{appVersion.version} — {APP_IDENTITY.copyright}
-          </Text>
         </View>
       </ScrollView>
 
@@ -645,62 +550,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ onBack, onReplay
         onConfirm={handleDeleteAllData}
         onCancel={() => setShowDeleteAllModal(false)}
       />
-
-      {/* RAW JSON VIEWER / PASTER MODAL */}
-      <Modal
-        visible={isRawJsonModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setIsRawJsonModalVisible(false)}
-      >
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-        <View style={styles.modalOverlay}>
-          <View style={styles.jsonModalCard}>
-            <View style={styles.jsonModalHeader}>
-              <Text style={styles.jsonModalTitle}>
-                {rawJsonMode === 'export' ? 'Backup JSON' : 'Paste Backup JSON'}
-              </Text>
-              <TouchableOpacity onPress={() => setIsRawJsonModalVisible(false)}>
-                <Ionicons name="close" size={22} color={COLORS.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={styles.jsonInput}
-              multiline
-              value={rawJsonText}
-              onChangeText={setRawJsonText}
-              placeholder={
-                rawJsonMode === 'import'
-                  ? 'Paste full version 1 backup JSON content here...'
-                  : ''
-              }
-              placeholderTextColor={COLORS.textMuted}
-              editable={rawJsonMode === 'import'}
-              selectTextOnFocus={rawJsonMode === 'export'}
-            />
-
-            <View style={styles.jsonModalButtons}>
-              <TouchableOpacity
-                style={styles.cancelModalButton}
-                onPress={() => setIsRawJsonModalVisible(false)}
-              >
-                <Text style={styles.cancelModalButtonText}>Close</Text>
-              </TouchableOpacity>
-
-              {rawJsonMode === 'import' && (
-                <TouchableOpacity
-                  style={styles.confirmModalButton}
-                  onPress={() => prepareImport(rawJsonText)}
-                  disabled={!rawJsonText.trim()}
-                >
-                  <Text style={styles.confirmModalButtonText}>Validate & Import</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* RESTORE CONFIRMATION MODAL */}
       <ConfirmationModal
@@ -772,13 +621,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: COLORS.textPrimary,
-    marginBottom: 6,
-  },
-  cardDescription: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    lineHeight: 18,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   buttonRow: {
     flexDirection: 'row',
@@ -813,17 +656,6 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     fontSize: 13,
     fontWeight: '600',
-  },
-  textLinkButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-  },
-  textLinkButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.primary,
   },
   infoRow: {
     flexDirection: 'row',
@@ -897,20 +729,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: COLORS.textPrimary,
   },
-  itemRulesRow: {
-    flexDirection: 'row',
-    gap: 8,
-    marginBottom: 6,
-  },
-  itemRuleField: {
-    flex: 1,
-  },
-  itemRuleLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.textPrimary,
-    marginBottom: 4,
-  },
   itemRuleInput: {
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -937,88 +755,5 @@ const styles = StyleSheet.create({
     color: COLORS.danger,
     fontSize: 13,
     fontWeight: '700',
-  },
-  creditBlock: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 28,
-  },
-  creditText: {
-    fontSize: 12,
-    color: COLORS.textMuted,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  jsonModalCard: {
-    width: '100%',
-    maxWidth: 440,
-    height: '80%',
-    backgroundColor: COLORS.surface,
-    borderRadius: 24,
-    padding: 24,
-    elevation: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.8)',
-  },
-  jsonModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  jsonModalTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: COLORS.textPrimary,
-  },
-  jsonInput: {
-    flex: 1,
-    backgroundColor: COLORS.surfaceVariant,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: COLORS.borderDark,
-    padding: 12,
-    fontSize: 12,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-    color: COLORS.textPrimary,
-    textAlignVertical: 'top',
-  },
-  jsonModalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 12,
-    marginTop: 14,
-  },
-  cancelModalButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    backgroundColor: COLORS.surfaceVariant,
-  },
-  cancelModalButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-  },
-  confirmModalButton: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-  },
-  confirmModalButtonText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
   },
 });

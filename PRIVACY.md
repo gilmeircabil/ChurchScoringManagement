@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Offline Quiz Group & Score Manager**
+**Quiz Manager**
 Last updated: 28 September 2026
 
 ## Summary

@@ -70,6 +70,19 @@ export async function saveAndShareExcelFile(
 }
 
 /**
+ * Sanitizes a string value before writing to a spreadsheet cell to prevent
+ * formula injection (CWE-1236 / CSV injection).
+ * If the string starts with =, +, -, @, \t, or \r, it is prepended with a single
+ * quote (') so spreadsheet applications treat it as literal text.
+ */
+export function sanitizeSpreadsheetCell<T extends string | number | null | undefined>(value: T): T {
+  if (typeof value === 'string' && /^[=+\-@\t\r]/.test(value)) {
+    return `'${value}` as T;
+  }
+  return value;
+}
+
+/**
  * Builds an XLSX workbook for the player roster.
  */
 export function buildPlayersWorkbook(players: PlayerWithStats[]): XLSX.WorkBook {
@@ -81,7 +94,7 @@ export function buildPlayersWorkbook(players: PlayerWithStats[]): XLSX.WorkBook 
   for (const p of players) {
     rows.push([
       formatPlayerIdentifier(p.player_number),
-      p.name,
+      sanitizeSpreadsheetCell(p.name),
       p.initial_score ?? 0,
       p.total_score,
       p.rounds_played,
@@ -139,7 +152,7 @@ export function buildReportWorkbook(options: ExportReportOptions): XLSX.WorkBook
       overallRows.push([
         item.rank,
         formatPlayerIdentifier(item.player_number),
-        item.player_name,
+        sanitizeSpreadsheetCell(item.player_name),
         item.score,
         item.rounds_count ?? 0,
       ]);
@@ -168,7 +181,7 @@ export function buildReportWorkbook(options: ExportReportOptions): XLSX.WorkBook
         : `Group ${item.group_number}`;
       groupRows.push([
         item.rank,
-        displayName,
+        sanitizeSpreadsheetCell(displayName),
         item.member_count,
         item.quiz_score,
         item.items_bonus,
@@ -198,7 +211,7 @@ export function buildReportWorkbook(options: ExportReportOptions): XLSX.WorkBook
       roundRows.push([
         item.rank,
         formatPlayerIdentifier(item.player_number),
-        item.player_name,
+        sanitizeSpreadsheetCell(item.player_name),
         item.score,
       ]);
     }
@@ -244,7 +257,7 @@ export function buildDatabaseBackupWorkbook(backup: BackupData): XLSX.WorkBook {
     playerRows.push([
       p.id,
       formatPlayerIdentifier(p.player_number),
-      p.name,
+      sanitizeSpreadsheetCell(p.name),
       p.initial_score ?? 0,
       p.active === 1 ? 'Yes' : 'No',
       p.created_at,
@@ -279,9 +292,11 @@ export function buildDatabaseBackupWorkbook(backup: BackupData): XLSX.WorkBook {
     'Book Carry',
     'Pen Carry',
     'Paper Carry',
+    'Bible Carry',
     'Book Pts',
     'Pen Pts',
     'Paper Pts',
+    'Bible Pts',
   ];
   const groupRows: (string | number)[][] = [groupHeaders];
   for (const g of backup.groups) {
@@ -289,13 +304,15 @@ export function buildDatabaseBackupWorkbook(backup: BackupData): XLSX.WorkBook {
       g.id,
       g.round_id,
       g.group_number,
-      g.name || '',
+      sanitizeSpreadsheetCell(g.name || ''),
       g.book_count || 0,
       g.pen_count || 0,
       g.paper_count || 0,
+      g.bible_count || 0,
       g.book_points || 10,
       g.pen_points || 5,
       g.paper_points || 5,
+      g.bible_points || 5,
     ]);
   }
   const wsGroups = XLSX.utils.aoa_to_sheet(groupRows);
@@ -307,6 +324,8 @@ export function buildDatabaseBackupWorkbook(backup: BackupData): XLSX.WorkBook {
     { wch: 12 },
     { wch: 12 },
     { wch: 12 },
+    { wch: 12 },
+    { wch: 10 },
     { wch: 10 },
     { wch: 10 },
     { wch: 10 },

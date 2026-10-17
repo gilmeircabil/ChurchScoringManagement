@@ -17,6 +17,8 @@ export async function getDefaultItemRules(): Promise<ItemRuleConfig> {
         pen_points: typeof parsed.pen_points === 'number' ? parsed.pen_points : (typeof parsed.pen === 'number' ? parsed.pen : APP_CONFIG.defaultItemPoints.pen),
         paper_name: typeof parsed.paper_name === 'string' && parsed.paper_name.trim() ? parsed.paper_name.trim() : APP_CONFIG.defaultItemNames.paper,
         paper_points: typeof parsed.paper_points === 'number' ? parsed.paper_points : (typeof parsed.paper === 'number' ? parsed.paper : APP_CONFIG.defaultItemPoints.paper),
+        bible_name: typeof parsed.bible_name === 'string' && parsed.bible_name.trim() ? parsed.bible_name.trim() : APP_CONFIG.defaultItemNames.bible,
+        bible_points: typeof parsed.bible_points === 'number' ? parsed.bible_points : (typeof parsed.bible === 'number' ? parsed.bible : APP_CONFIG.defaultItemPoints.bible),
       };
     }
   } catch (err) {
@@ -29,6 +31,8 @@ export async function getDefaultItemRules(): Promise<ItemRuleConfig> {
     pen_points: APP_CONFIG.defaultItemPoints.pen,
     paper_name: APP_CONFIG.defaultItemNames.paper,
     paper_points: APP_CONFIG.defaultItemPoints.paper,
+    bible_name: APP_CONFIG.defaultItemNames.bible,
+    bible_points: APP_CONFIG.defaultItemPoints.bible,
   };
 }
 
@@ -47,6 +51,7 @@ export async function getDefaultItemPoints(): Promise<ItemPointsConfig> {
     book: rules.book_points,
     pen: rules.pen_points,
     paper: rules.paper_points,
+    bible: rules.bible_points,
   };
 }
 
@@ -57,5 +62,6 @@ export async function saveDefaultItemPoints(points: ItemPointsConfig): Promise<v
     book_points: points.book,
     pen_points: points.pen,
     paper_points: points.paper,
+    bible_points: points.bible,
   });
 }

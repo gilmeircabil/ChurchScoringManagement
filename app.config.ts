@@ -69,8 +69,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
-    name: 'Offline Quiz Group & Score Manager',
+    name: 'Quiz Manager',
     slug: 'quiz-score-manager',
+    platforms: ['android', 'ios', 'web'],
     version: appVersion.version,
     // Each released app version gets its own JS runtime, so an OTA update can
     // never be applied to a binary it was not built for.

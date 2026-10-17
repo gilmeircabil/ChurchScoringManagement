@@ -204,7 +204,7 @@ export class PlayerRepository {
 
     const stats = await this.db.getFirstAsync<{ total_score: number | null; rounds_played: number }>(
       `SELECT
-        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points), 0)) AS total_score,
+        (COALESCE(p.initial_score, 0) + COALESCE(SUM(s.points + s.bonus_points), 0)) AS total_score,
         COUNT(s.id) AS rounds_played
        FROM players p
        LEFT JOIN scores s ON s.player_id = p.id
@@ -229,6 +229,7 @@ export class PlayerRepository {
       round_status: string;
       group_number: number | null;
       points: number;
+      bonus_points: number;
       updated_at: string;
     }>(
       `SELECT
@@ -237,7 +238,8 @@ export class PlayerRepository {
         r.round_date,
         r.status AS round_status,
         g.group_number,
-        s.points,
+        (s.points + COALESCE(s.bonus_points, 0)) AS points,
+        COALESCE(s.bonus_points, 0) AS bonus_points,
         s.updated_at
        FROM scores s
        JOIN rounds r ON s.round_id = r.id

@@ -5,6 +5,7 @@ import { BlurView } from 'expo-blur';
 import { Group } from '../types';
 import { COLORS } from '../constants/colors';
 import { PlayerIdBadge } from './PlayerIdBadge';
+import { getGroupColor } from '../utils/groupColors';
 
 interface AssignGroupModalProps {
   visible: boolean;
@@ -42,7 +43,7 @@ export const AssignGroupModal: React.FC<AssignGroupModalProps> = ({
         setSelectedGroupId(currentAssignedGroupId || '');
       } else {
         setViewMode('select_group');
-        setSelectedGroupId(groups.length > 0 ? groups[0].id : '');
+        setSelectedGroupId('');
       }
     }
   }, [visible, isCurrentlyAssigned, currentAssignedGroupId, groups]);
@@ -74,17 +75,26 @@ export const AssignGroupModal: React.FC<AssignGroupModalProps> = ({
           </View>
 
           {/* Mode 1: Already Assigned Actions */}
-          {isCurrentlyAssigned && viewMode === 'assigned_actions' && (
-            <View style={styles.contentSection}>
-              <View style={styles.currentGroupBanner}>
-                <Ionicons name="people" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
-                <Text style={styles.currentGroupLabel}>
-                  Currently assigned to:{' '}
-                  <Text style={styles.currentGroupValue}>
-                    Group {currentAssignedGroupNumber}
+          {isCurrentlyAssigned && viewMode === 'assigned_actions' && (() => {
+            const currentGroup = groups.find((g) => g.id === currentAssignedGroupId || g.group_number === currentAssignedGroupNumber);
+            const currentGroupColor = currentGroup ? getGroupColor(currentGroup.group_number, currentGroup.name) : currentAssignedGroupNumber ? getGroupColor(currentAssignedGroupNumber, null) : null;
+            const currentGroupName = currentGroup?.name && !/^group\s*\d+$/i.test(currentGroup.name.trim()) ? currentGroup.name.trim() : currentGroupColor?.name || 'Assigned';
+
+            return (
+              <View style={styles.contentSection}>
+                <View style={styles.currentGroupBanner}>
+                  {currentGroupColor ? (
+                    <View style={[styles.groupColorDot, { backgroundColor: currentGroupColor.hex, marginRight: 8 }]} />
+                  ) : (
+                    <Ionicons name="people" size={20} color={COLORS.primary} style={{ marginRight: 8 }} />
+                  )}
+                  <Text style={styles.currentGroupLabel}>
+                    Assigned to:{' '}
+                    <Text style={styles.currentGroupValue}>
+                      {currentGroupName}
+                    </Text>
                   </Text>
-                </Text>
-              </View>
+                </View>
 
               <View style={styles.buttonStack}>
                 <TouchableOpacity
@@ -110,7 +120,8 @@ export const AssignGroupModal: React.FC<AssignGroupModalProps> = ({
                 </TouchableOpacity>
               </View>
             </View>
-          )}
+          );
+        })()}
 
           {/* Mode 2: Select Group (for new assignment or moving) */}
           {viewMode === 'select_group' && (
@@ -121,6 +132,10 @@ export const AssignGroupModal: React.FC<AssignGroupModalProps> = ({
                 {groups.map((group) => {
                   const isSelected = selectedGroupId === group.id;
                   const isCurrent = currentAssignedGroupId === group.id;
+                  const groupColor = getGroupColor(group.group_number, group.name);
+                  const displayGroupName = group.name && !/^group\s*\d+$/i.test(group.name.trim())
+                    ? group.name.trim()
+                    : groupColor.name;
 
                   return (
                     <TouchableOpacity
@@ -135,13 +150,14 @@ export const AssignGroupModal: React.FC<AssignGroupModalProps> = ({
                       <View style={styles.radioOuter}>
                         {isSelected && <View style={styles.radioInner} />}
                       </View>
+                      <View style={[styles.groupColorDot, { backgroundColor: groupColor.hex }]} />
                       <Text
                         style={[
                           styles.groupOptionText,
                           isSelected && styles.groupOptionTextSelected,
                         ]}
                       >
-                        Group {group.group_number}
+                        {displayGroupName}
                         {isCurrent ? ' (Current)' : ''}
                       </Text>
                     </TouchableOpacity>
@@ -327,6 +343,12 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: COLORS.primary,
+  },
+  groupColorDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
   },
   groupOptionText: {
     fontSize: 15,

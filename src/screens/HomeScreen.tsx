@@ -88,7 +88,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ onNavigate, onOpenSettin
     <View style={styles.container}>
       <Header
         title={APP_CONFIG.appName}
-        subtitle="Offline Quiz Score Management"
         onSettingsPress={onOpenSettings}
       />
 

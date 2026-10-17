@@ -149,10 +149,10 @@ export class BackupRepository {
       for (const g of backup.groups) {
         await this.db.runAsync(
           `INSERT INTO groups (id, round_id, group_number, name, quiz_score,
-             book_count, pen_count, paper_count,
-             book_points, pen_points, paper_points,
-             book_name, pen_name, paper_name)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             book_count, pen_count, paper_count, bible_count,
+             book_points, pen_points, paper_points, bible_points,
+             book_name, pen_name, paper_name, bible_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           g.id,
           g.round_id,
           g.group_number,
@@ -161,12 +161,15 @@ export class BackupRepository {
           g.book_count ?? 0,
           g.pen_count ?? 0,
           g.paper_count ?? 0,
+          g.bible_count ?? 0,
           g.book_points ?? 10,
           g.pen_points ?? 5,
           g.paper_points ?? 5,
+          g.bible_points ?? 5,
           g.book_name || 'Book',
           g.pen_name || 'Pen',
-          g.paper_name || 'Paper'
+          g.paper_name || 'Paper',
+          g.bible_name || 'Bible'
         );
       }
 
@@ -185,11 +188,12 @@ export class BackupRepository {
       // Insert scores
       for (const s of backup.scores) {
         await this.db.runAsync(
-          'INSERT INTO scores (id, round_id, player_id, points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+          'INSERT INTO scores (id, round_id, player_id, points, bonus_points, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
           s.id,
           s.round_id,
           s.player_id,
           s.points,
+          s.bonus_points ?? 0,
           s.created_at,
           s.updated_at
         );
